@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">GATE Prep</string>
+    <string name="title_activity_main">GATE Prep</string>
+    <string name="package_name">com.gateprep.app</string>
+    <string name="custom_url_scheme">com.gateprep.app</string>
+</resources>
