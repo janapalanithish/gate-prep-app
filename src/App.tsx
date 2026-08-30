@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { AppData } from './lib/types';
-import { loadAppData, saveAppData, createDefaultAppData } from './lib/storage';
+import { loadAppData, createDefaultAppData } from './lib/storage';
 import { useStore, useActions } from './lib/store';
 
 import BranchSetupPage from './pages/BranchSetupPage';
@@ -35,8 +35,7 @@ export default function App() {
           firstLaunchCompleted: saved.firstLaunchCompleted || false,
         };
         // Re-hydrate store
-        actions.resetBranch(); // Just to initialize; but we want to restore state...
-        // Instead, set full state through store (we access internal via getStore directly below)
+        actions.hydrate(fixed);
       } else {
         // No saved data - show branch setup
         setShowBranchSetup(true);
