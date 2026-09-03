@@ -279,7 +279,12 @@ export default function DailyActivityPage() {
       const startTarget = new Date(now);
       startTarget.setHours(sh, sm, 0, 0);
       if (startTarget.getTime() > now.getTime()) {
-        scheduleTaskStartReminder(newTask.id, taskTitle.trim(), startTarget).catch(() => {});
+        scheduleTaskStartReminder(
+          newTask.id,
+          taskTitle.trim(),
+          startTarget,
+          taskSubject.trim() || undefined,
+        ).catch(() => {});
       }
     }
     if (taskEndTime) {

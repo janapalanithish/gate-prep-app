@@ -3,6 +3,7 @@ package com.gateprep.app;
 import android.Manifest;
 import android.content.pm.PackageManager;
 import android.os.Build;
+import android.util.Log;
 import android.os.Bundle;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
@@ -22,16 +23,17 @@ import android.content.Intent;
 
 public class MainActivity extends BridgeActivity {
 
-    public static final String NOTIFICATION_CHANNEL_ID = "gate_prep_reminders";
+    public static final String CHANNEL_TASK_REMINDERS = "task-reminders";
+    public static final String CHANNEL_APP_UPDATES    = "app-updates";
     private static final int NOTIFICATION_PERMISSION_REQUEST_CODE = 1001;
-    private static final int EXACT_ALARM_PERMISSION_REQUEST_CODE = 1002;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // Create high-priority notification channel
-        createNotificationChannel();
+        // Create BOTH notification channels before requesting permissions
+        createTaskRemindersChannel();
+        createAppUpdatesChannel();
 
         // Request POST_NOTIFICATIONS permission (Android 13+)
         requestNotificationPermissions();
@@ -41,27 +43,46 @@ public class MainActivity extends BridgeActivity {
     }
 
     /**
-     * Creates a HIGH-priority notification channel for GATE Prep reminders.
-     * This ensures notifications appear prominently with sound and vibration.
+     * Creates Channel 1: task-reminders (MAX importance, vibration enabled).
+     * This is the primary channel for task start/end alarms.
      */
-    private void createNotificationChannel() {
+    private void createTaskRemindersChannel() {
         NotificationChannel channel = new NotificationChannel(
-            NOTIFICATION_CHANNEL_ID,
-            "GATE Prep Reminders",
-            NotificationManager.IMPORTANCE_HIGH   // ← HIGH priority — shows on lock screen, makes sound
+            CHANNEL_TASK_REMINDERS,
+            "Task Reminders",
+            NotificationManager.IMPORTANCE_MAX   // importance=5 — top priority, sound + vibration
         );
-        channel.setDescription("Task and study reminders for GATE preparation");
+        channel.setDescription("Task start & end time reminders for your study sessions");
         channel.enableVibration(true);
         channel.enableLights(true);
         channel.setShowBadge(true);
         channel.setLockscreenVisibility(NotificationCompat.VISIBILITY_PUBLIC);
-
-        // Allow foreground service for exact alarms
-        channel.setBypassDnd(false);
-
         NotificationManager notificationManager = getSystemService(NotificationManager.class);
         if (notificationManager != null) {
             notificationManager.createNotificationChannel(channel);
+            Log.d("[NotificationService]", "✓ Task Reminders channel created (task-reminders, IMPORTANCE_MAX)");
+        }
+    }
+
+    /**
+     * Creates Channel 2: app-updates (HIGH importance).
+     * Used for in-app update availability notifications.
+     */
+    private void createAppUpdatesChannel() {
+        NotificationChannel channel = new NotificationChannel(
+            CHANNEL_APP_UPDATES,
+            "App Updates",
+            NotificationManager.IMPORTANCE_HIGH  // importance=4 — prominent but below reminders
+        );
+        channel.setDescription("Alerts when a new version of GATE Prep is available");
+        channel.enableVibration(true);
+        channel.enableLights(true);
+        channel.setShowBadge(true);
+        channel.setLockscreenVisibility(NotificationCompat.VISIBILITY_PUBLIC);
+        NotificationManager notificationManager = getSystemService(NotificationManager.class);
+        if (notificationManager != null) {
+            notificationManager.createNotificationChannel(channel);
+            Log.d("[NotificationService]", "✓ App Updates channel created (app-updates, IMPORTANCE_HIGH)");
         }
     }
 

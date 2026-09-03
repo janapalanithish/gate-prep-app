@@ -43,7 +43,7 @@ export function compareVersions(v1: string, v2: string): number {
  * Get the current app version from package.json or hardcoded constant.
  * Update this whenever releasing a new version.
  */
-export const CURRENT_APP_VERSION = '1.0.19';
+export const CURRENT_APP_VERSION = '1.0.20';
 const GITHUB_API_URL = 'https://api.github.com/repos/janapalanithish/gate-prep-app/releases/latest';
 
 /**

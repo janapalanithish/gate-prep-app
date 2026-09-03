@@ -2,7 +2,14 @@ import { useEffect, useState } from 'react';
 import { AppData } from './lib/types';
 import { loadAppData, createDefaultAppData } from './lib/storage';
 import { useStore, useActions } from './lib/store';
-import { initializeNotifications, registerNotificationActionListener, isPermissionGranted, checkNotificationPermission } from './lib/notificationService';
+import {
+  initializeNotifications,
+  registerNotificationActionListener,
+  isPermissionGranted,
+  createNotificationChannels,
+  isPermissionDenied,
+  showAppUpdateNotification,
+} from './lib/notificationService';
 import { checkForUpdates, CURRENT_APP_VERSION } from './lib/versionCheck';
 
 import BranchSetupPage from './pages/BranchSetupPage';
@@ -16,6 +23,10 @@ export default function App() {
   const [loaded, setLoaded] = useState(false);
   const [showBranchSetup, setShowBranchSetup] = useState(false);
   const [activePage, setActivePage] = useState<'checklist' | 'daily' | 'duration' | 'mocktest' | 'settings'>('checklist');
+
+  // Persistent notification permission modal (shown on dashboard when denied)
+  const [showPermModal, setShowPermModal] = useState(false);
+  const [permModalDismissed, setPermModalDismissed] = useState(false);
 
   const appData = useStore();
   const actions = useActions();
@@ -73,7 +84,7 @@ export default function App() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  // Check for app updates after load
+  // Check for app updates after load — show banner AND fire a system notification
   useEffect(() => {
     if (!loaded) return;
     (async () => {
@@ -81,37 +92,45 @@ export default function App() {
       // Only show the banner when the latest GitHub release is strictly
       // newer than what is currently installed.
       if (result.hasUpdate && result.release) {
+        const latestTag = result.release.tag_name || result.latestVersion;
         setUpdateBanner({
           visible: true,
-          latest: result.release.tag_name || result.latestVersion,
+          latest: latestTag,
           url: result.downloadUrl,
         });
+        // Fire a system-level notification on the app-updates channel so the
+        // user is alerted even when the in-app banner is dismissed.
+        if (isPermissionGranted()) {
+          showAppUpdateNotification(latestTag, result.downloadUrl || undefined).catch(() => {});
+        }
       }
     })();
   }, [loaded]);
 
-  // Proactively prompt for notification permission on app launch.
+  // Proactively prompt for notification permission on app load + create channels
   useEffect(() => {
     if (!loaded) return;
     (async () => {
+      console.log('[App] Starting notification initialization...');
       try {
+        // Always re-create channels on startup
+        await createNotificationChannels();
+
+        // Check permission
         const ok = await initializeNotifications();
+        console.log('[App] Notification init result:', ok);
+
         if (!ok) {
-          const status = await checkNotificationPermission();
-          if (status.display === 'denied') {
-            setToast({
-              kind: 'warn',
-              text: 'Notifications are disabled. Enable them in Android Settings to receive task reminders.',
-            });
-          } else {
-            setToast({
-              kind: 'info',
-              text: 'Enable notifications to receive task start & end reminders.',
-            });
+          const denied = await isPermissionDenied();
+          console.log('[App] Permission denied?', denied);
+          if (denied) {
+            // If user previously rejected permission, show the prominent dashboard modal
+            setShowPermModal(true);
+            setPermModalDismissed(false);
           }
         }
-      } catch {
-        // silent
+      } catch (e) {
+        console.error('[App] Notification init error:', e);
       }
     })();
   }, [loaded]);
@@ -180,6 +199,18 @@ export default function App() {
       />
     );
   }
+
+  // Active notification permission modal — prominent dashboard prompt
+  const handleEnableNotifications = async () => {
+    const ok = await initializeNotifications();
+    if (ok) {
+      setShowPermModal(false);
+      setPermModalDismissed(true);
+      setToast({ kind: 'success', text: 'Notifications enabled! You will receive task reminders.' });
+    } else {
+      setToast({ kind: 'warn', text: 'Please enable notifications in Android Settings to receive reminders.' });
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 text-slate-100 font-sans selection:bg-brand-500 selection:text-white overflow-x-hidden">
@@ -290,6 +321,48 @@ export default function App() {
                   Later
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================================================================
+          PROMINENT NOTIFICATION PERMISSION MODAL
+          Shown on the dashboard when the user has permanently denied
+          notification permission. Provides a direct button to re-request.
+      ================================================================ */}
+      {showPermModal && !permModalDismissed && (
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 mt-3 animate-fade-in">
+          <div className="relative glass-panel rounded-2xl p-4 border border-amber-500/40 bg-gradient-to-r from-amber-950/50 via-slate-900/80 to-amber-950/50 shadow-lg shadow-amber-900/20">
+            <div className="flex items-start gap-3">
+              {/* Bell icon */}
+              <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-300 flex items-center justify-center shrink-0 mt-0.5">
+                <span className="text-xl">🔔</span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-sm font-bold text-white mb-0.5">
+                  Notifications Disabled
+                </h3>
+                <p className="text-[11px] text-amber-200/80 leading-relaxed">
+                  Enable notifications to receive task start &amp; end reminders, and never miss a study session.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 mt-3 ml-[52px]">
+              <button
+                type="button"
+                onClick={handleEnableNotifications}
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-600 to-brand-600 hover:from-amber-500 hover:to-brand-500 text-white text-xs font-bold shadow-md shadow-amber-900/30 transition-colors"
+              >
+                Enable Notifications
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowPermModal(false); setPermModalDismissed(true); }}
+                className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 text-[11px] font-semibold border border-white/10 transition-colors"
+              >
+                Dismiss
+              </button>
             </div>
           </div>
         </div>
