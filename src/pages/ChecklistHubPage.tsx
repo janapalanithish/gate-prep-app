@@ -172,7 +172,7 @@ export default function ChecklistHubPage({ onEditBranch }: ChecklistHubPageProps
                 Active Branch
               </span>
             </div>
-            <p className="text-[11px] text-slate-400 truncate block w-full pr-4 overflow-hidden text-ellipsis whitespace-nowrap">
+            <p className="text-[11px] text-slate-400 block w-full pr-4 mt-0.5 break-words leading-snug" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
               {currentBranchInfo.description}
             </p>
           </div>
