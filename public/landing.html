@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="GATE Prep App — Study checklist, task scheduling, notifications, and progress tracking for GATE CS/IT, DA, EC, EE, ME, CE and more." />
+  <title>GATE Prep App — Exam Prep Hub v1.0.14</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap');
+
+    :root {
+      --bg: #0b0e14;
+      --surface: #11131a;
+      --surface-2: #161a26;
+      --text: #f0f0f3;
+      --text-secondary: #9ca3b7;
+      --text-muted: #6b7280;
+      --accent: #6366f1;
+      --accent-2: #a855f7;
+      --accent-glow: rgba(99,102,241,0.35);
+      --border: rgba(255,255,255,0.06);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: 'Inter', system-ui, -apple-system, Segoe UI, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.45;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    a { color: inherit; text-decoration: none; }
+
+    header {
+      position: sticky; top: 0; z-index: 50;
+      backdrop-filter: blur(16px) saturate(140%);
+      -webkit-backdrop-filter: blur(16px) saturate(140%);
+      background: rgba(11,14,20,0.72);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .nav-inner {
+      max-width: 1100px; margin: 0 auto; padding: 0 24px;
+      height: 64px; display: flex; align-items: center; justify-content: space-between;
+    }
+    .logo { display: flex; align-items: center; gap: 10px; font-weight: 800; letter-spacing: -0.02em; font-size: 1.15rem; }
+    .logo-icon { width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, #6366f1, #9333ea); display: grid; place-items: center; box-shadow: 0 0 20px rgba(99,102,241,0.4); }
+    .nav-links { display: flex; gap: 6px; align-items: center; }
+    .nav-links a, .nav-links .cta {
+      padding: 6px 14px; border-radius: 999px; font-size: 0.78rem; font-weight: 600;
+      transition: background .2s, color .2s; border: 1px solid rgba(255,255,255,0.08);
+    }
+    .nav-links a:hover { background: rgba(255,255,255,0.06); color: #fff; }
+    .nav-links .cta {
+      background: linear-gradient(135deg, #6366f1, #9333ea); color: #fff; border-color: transparent;
+      box-shadow: 0 0 20px rgba(99,102,241,0.35);
+    }
+    .nav-links .cta:hover { background: linear-gradient(135deg, #7775f7, #b05cf5); }
+
+    main { max-width: 1100px; margin: 0 auto; padding: 80px 24px 120px; }
+    .hero { text-align: center; max-width: 720px; margin: 0 auto 96px; }
+    .hero h1 { font-size: clamp(2.6rem, 6vw, 4rem); font-weight: 900; line-height: 1.05; letter-spacing: -0.035em; margin-bottom: 16px; }
+    .hero h1 .gradient-text { background: linear-gradient(135deg, #818cf8, #c084fc, #f472b6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .hero p.lead { color: var(--text-secondary); font-size: 1.05rem; max-width: 560px; margin: 0 auto 36px; }
+    .hero-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .btn-primary {
+      display: inline-flex; align-items: center; gap: 8px; padding: 14px 28px; border-radius: 14px;
+      background: linear-gradient(135deg, #6366f1, #9333ea); color: #fff; font-weight: 700; font-size: 0.95rem;
+      box-shadow: 0 0 30px rgba(99,102,241,0.35); transition: transform .1s, box-shadow .2s;
+    }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(99,102,241,0.45); }
+    .btn-secondary {
+      display: inline-flex; align-items: center; gap: 8px; padding: 14px 28px; border-radius: 14px;
+      background: rgba(255,255,255,0.06); color: #fff; font-weight: 600; font-size: 0.95rem;
+      border: 1px solid rgba(255,255,255,0.1); transition: background .2s;
+    }
+    .btn-secondary:hover { background: rgba(255,255,255,0.1); }
+
+    .badge-row { display: flex; gap: 10px; justify-content: center; margin-top: 28px; flex-wrap: wrap; }
+    .badge { padding: 6px 14px; border-radius: 999px; font-size: 0.75rem; font-weight: 600; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.03); color: var(--text-secondary); }
+
+    /* Sections */
+    section { margin-bottom: 96px; }
+    section h2 { font-size: 1.6rem; font-weight: 800; letter-spacing: -0.025em; margin-bottom: 12px; }
+    section p.subtitle { color: var(--text-secondary); font-size: 0.95rem; margin-bottom: 36px; }
+
+    .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 20px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 28px; transition: border-color .2s, transform .2s; }
+    .card:hover { border-color: rgba(99,102,241,0.35); transform: translateY(-3px); }
+    .card .icon { width: 48px; height: 48px; border-radius: 12px; background: linear-gradient(135deg, #6366f1, #9333ea); display: grid; place-items: center; margin-bottom: 16px; box-shadow: 0 0 18px rgba(99,102,241,0.35); }
+    .card h3 { font-size: 1.05rem; font-weight: 700; margin-bottom: 6px; }
+    .card p { color: var(--text-secondary); font-size: 0.9rem; line-height: 1.55; }
+
+    /* Download section */
+    .download-section { background: linear-gradient(180deg, rgba(99,102,241,0.08) 0%, rgba(147,51,234,0.06) 100%); border: 1px solid rgba(99,102,241,0.18); border-radius: 24px; padding: 48px; text-align: center; margin-top: 48px; }
+    .download-section h2 { font-size: 1.8rem; font-weight: 900; letter-spacing: -0.03em; margin-bottom: 12px; }
+    .download-section p { color: var(--text-secondary); max-width: 480px; margin: 0 auto 28px; font-size: 0.95rem; }
+    .download-btn { display: inline-flex; align-items: center; gap: 10px; padding: 16px 32px; border-radius: 14px; background: linear-gradient(135deg, #6366f1, #9333ea); color: #fff; font-weight: 800; font-size: 1.05rem; box-shadow: 0 0 30px rgba(99,102,241,0.45); transition: transform .1s, box-shadow .2s; }
+    .download-btn:hover { transform: translateY(-3px); box-shadow: 0 10px 40px rgba(99,102,241,0.5); }
+    .note { font-size: 0.82rem; color: var(--text-muted); margin-top: 18px; }
+    .version-tag { display: inline-block; padding: 4px 10px; border-radius: 999px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08); font-size: 0.75rem; font-family: 'JetBrains Mono', monospace; color: #c084fc; margin-top: 10px; }
+
+    footer { text-align: center; padding: 40px 24px; color: var(--text-muted); font-size: 0.85rem; border-top: 1px solid rgba(255,255,255,0.05); }
+    footer a { color: var(--text-secondary); text-decoration: underline; text-underline-offset: 3px; }
+
+    @media (max-width: 640px) { .nav-inner { padding: 0 16px; } main { padding: 48px 16px 80px; } .cards { grid-template-columns: 1fr; } .hero h1 { font-size: 2.2rem; } }
+  </style>
+</head>
+<body>
+<header>
+  <div class="nav-inner">
+    <a href="#" class="logo" aria-label="GATE Prep Home">
+      <span class="logo-icon">🎓</span>
+      <span>GATE Prep</span>
+    </a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="#features">Features</a>
+      <a href="#download">Download APK</a>
+      <a href="#about">About</a>
+      <a class="cta" href="https://github.com/janapalanithish/gate-prep-app/releases/latest/download/app-debug.apk" target="_blank" rel="noopener noreferrer"><i class="fa-solid fa-download"></i> Download APK</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero" aria-label="Hero">
+    <h1>GATE Prep — <span class="gradient-text">Exam Prep Hub</span></h1>
+    <p class="lead">Checklist tracking, task scheduling with native notifications, progress analytics, and mock test logging — all in one mobile-first app with direct APK installs.</p>
+    <div class="hero-actions">
+      <a class="btn-primary" href="#download" aria-label="Download GATE Prep APK">
+        <i class="fa-solid fa-download"></i> Download Android App (APK)
+      </a>
+      <a class="btn-secondary" href="#features" aria-label="Explore Features">
+        Explore Features <i class="fa-solid fa-arrow-right"></i>
+      </a>
+    </div>
+    <div class="badge-row" aria-label="Tags">
+      <span class="badge">v1.0.14</span>
+      <span class="badge">Android APK</span>
+      <span class="badge">PWA Ready</span>
+      <span class="badge">Local Storage</span>
+    </div>
+  </section>
+
+  <section id="features" aria-label="Features">
+    <h2>Built for GATE Success</h2>
+    <p class="subtitle">A dual-checklist study engine with scheduling, reminders, and streak tracking.</p>
+    <div class="cards">
+      <article class="card">
+        <div class="icon"><i class="fa-solid fa-list-check"></i></div>
+        <h3>Dual Checklist</h3>
+        <p>Track both initial study coverage and multi-round revision for every subtopic with progress bars and percentages.</p>
+      </article>
+      <article class="card">
+        <div class="icon"><i class="fa-solid fa-bell"></i></div>
+        <h3>Native Notifications</h3>
+        <p>Exact-time task reminders, end-time completion prompts, and snooze options using Android notification channels.</p>
+      </article>
+      <article class="card">
+        <div class="icon"><i class="fa-solid fa-calendar-check"></i></div>
+        <h3>Task Scheduler</h3>
+        <p>Plan tasks with start/end times, subject badges, and postpone-to-date functionality across your schedule.</p>
+      </article>
+      <article class="card">
+        <div class="icon"><i class="fa-solid fa-chart-line"></i></div>
+        <h3>Progress Analytics</h3>
+        <p>Coverage percentages, revision targets, activity heatmaps, and streak tracking to keep motivation high.</p>
+      </article>
+      <article class="card">
+        <div class="icon"><i class="fa-solid fa-mobile-screen-button"></i></div>
+        <h3>Direct APK Install</h3>
+        <p>No Play Store needed. Download the latest signed APK and install directly with seamless update support.</p>
+      </article>
+      <article class="card">
+        <div class="icon"><i class="fa-solid fa-file-export"></i></div>
+        <h3>Backup & Export</h3>
+        <p>Export your progress as JSON and import it on another device. All data stays local to your device.</p>
+      </article>
+    </div>
+  </section>
+
+  <section id="download" aria-label="Download">
+    <div class="download-section">
+      <h2>Download GATE Prep Android App (APK)</h2>
+      <p>Get native notifications, exact alarm scheduling, and direct updates without uninstalling previous versions. The APK is signed with a static keystore for seamless installation.</p>
+      <a class="download-btn" href="https://github.com/janapalanithish/gate-prep-app/releases/latest/download/app-debug.apk" target="_blank" rel="noopener noreferrer" download="gate-prep-app.apk" aria-label="Download APK">
+        <i class="fa-solid fa-download"></i> Download GATE Prep Android App (APK)
+      </a>
+      <p class="note">Download APK directly to install on your Android device (No Play Store required).</p>
+      <div class="version-tag">v1.0.14 · app-debug.apk · 2048-bit RSA · SHA-384</div>
+    </div>
+  </section>
+
+  <section id="about" aria-label="About">
+    <h2>About This App</h2>
+    <p class="subtitle">Built for GATE CS / IT, DA, EC, EE, ME, CE, and custom syllabus streams.</p>
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+      <article class="card" style="margin:0;">
+        <h3>Version Sync</h3>
+        <p>Web site and app are synchronized at v1.0.14. Previous v1.0.11 references have been replaced with the latest release endpoint.</p>
+      </article>
+      <article class="card" style="margin:0;">
+        <h3>Update Path</h3>
+        <p>The signed debug keystore (android/app/debug.keystore) is configured statically in build.gradle. Updates install directly over existing apps without conflicts.</p>
+      </article>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <p>GATE Prep App · GitHub: <a href="https://github.com/janapalanithish/gate-prep-app" target="_blank" rel="noopener noreferrer">janapalanithish/gate-prep-app</a> · Version <strong>v1.0.14</strong> · Direct APK available via GitHub Releases</p>
+</footer>
+</body>
+</html>
