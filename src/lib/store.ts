@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { AppData, Subject, Subtopic, DailyLog, DurationRecord, MockTestRecord, GateBranch, UserSettings, OverallProgressStats } from './types';
 import { saveAppData, loadAppData, createDefaultAppData, calculateOverallProgress, DEFAULT_SETTINGS } from './storage';
 import { getFreshSyllabusForBranch } from './syllabusData';
+import { formatDateKey, subDays } from './streakEngine';
 
 // ============================================
 // Store Implementation
@@ -315,13 +316,31 @@ class GatePrepStore {
 
     updateStreak: (date: string) => {
       this.setState((prev) => {
-        const today = date;
-        const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+        const today = date; // The date of the completed activity
+        const yesterday = formatDateKey(subDays(new Date(today), 1));
         const current = prev.streakInfo;
 
+        // Prevent past/future date leakage: only count if date is actually today or a valid recent active date.
+        // We update activityHistory precisely for this date, not arbitrarily.
         if (current.lastActiveDate === today) {
-          // Already recorded today, no change
-          return prev;
+          // Already recorded for today; just update task counts rather than double-counting streak.
+          // Update activity history entry with accurate counts from the log.
+          const log = prev.dailyLogs[today];
+          const completedTasks = (log?.tasks || []).filter((t) => t.completed).length;
+          return {
+            ...prev,
+            streakInfo: {
+              ...current,
+              activityHistory: {
+                ...current.activityHistory,
+                [today]: {
+                  active: true,
+                  minutes: log?.totalStudyMinutes || 0,
+                  tasksDone: completedTasks,
+                },
+              },
+            },
+          };
         }
 
         const isConsecutive =
@@ -330,6 +349,9 @@ class GatePrepStore {
 
         const newStreak = isConsecutive ? current.currentStreak + 1 : 1;
         const newLongest = Math.max(newStreak, current.longestStreak);
+
+        const log = prev.dailyLogs[today];
+        const completedTasks = (log?.tasks || []).filter((t) => t.completed).length;
 
         return {
           ...prev,
@@ -341,7 +363,11 @@ class GatePrepStore {
             totalActiveDays: current.totalActiveDays + 1,
             activityHistory: {
               ...current.activityHistory,
-              [today]: { active: true, minutes: 0, tasksDone: 0, pomodoroSessions: 0 },
+              [today]: {
+                active: true,
+                minutes: log?.totalStudyMinutes || 0,
+                tasksDone: completedTasks,
+              },
             },
           },
         };

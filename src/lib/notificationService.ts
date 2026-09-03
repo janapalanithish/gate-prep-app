@@ -1,6 +1,16 @@
 /**
  * Notification Service for GATE Prep App
- * Supports Android notification channels with snooze/postpone actions
+ * Supports Android notification channels with start/end task reminders.
+ *
+ * Key contracts:
+ *  - Schedule a TASK START ALARM at task start time:
+ *      title: "Task Time Arrived!"
+ *      body:  "Your task '[Task Title]' is starting now."
+ *  - Schedule a TASK END COMPLETION ALARM at task end time:
+ *      title: "Task Time Finished!"
+ *      body:  "Did you complete '[Task Title]'? Open app to confirm or reschedule."
+ *  - Tapping a notification (or its action button) deep-links into the app and
+ *    highlights the originating task with [Complete] or [Reschedule] options.
  */
 import { LocalNotifications, PermissionStatus } from '@capacitor/local-notifications';
 import { App } from '@capacitor/app';
@@ -13,6 +23,16 @@ export interface NotificationOptions {
   extraData?: Record<string, any>;
 }
 
+export type NotificationTapKind = 'start' | 'end';
+
+export interface NotificationTapPayload {
+  taskId: string;
+  taskTitle: string;
+  kind: NotificationTapKind;
+  /** If user picked an action button (Complete / Reschedule) right from the notification. */
+  action?: 'complete' | 'postpone';
+}
+
 const CHANNEL_ID = 'gate_prep_reminders';
 const CHANNEL_NAME = 'GATE Prep Reminders';
 
@@ -20,27 +40,47 @@ const CHANNEL_NAME = 'GATE Prep Reminders';
 let permissionChecked = false;
 let permissionGranted = false;
 
+/**
+ * Check current permission state without prompting.
+ */
+export async function checkNotificationPermission(): Promise<PermissionStatus> {
+  try {
+    return await LocalNotifications.checkPermissions();
+  } catch {
+    return { display: 'prompt' } as PermissionStatus;
+  }
+}
+
+/**
+ * Proactively request Capacitor LocalNotifications permission.
+ * Idempotent — safe to call on app launch and when opening the Add Task modal.
+ */
 export async function initializeNotifications(): Promise<boolean> {
-  // Proactively request on app launch / task creation
   try {
     const status: PermissionStatus = await LocalNotifications.checkPermissions();
-    if (status.display !== 'granted') {
-      const result: PermissionStatus = await LocalNotifications.requestPermissions();
-      if (result.display === 'granted') {
-        permissionGranted = true;
-        permissionChecked = true;
-        return true;
-      }
+    if (status.display === 'granted') {
+      permissionGranted = true;
+      permissionChecked = true;
+      return true;
     }
-    permissionGranted = true;
+    const result: PermissionStatus = await LocalNotifications.requestPermissions();
+    permissionGranted = result.display === 'granted';
     permissionChecked = true;
-    return true;
+    return permissionGranted;
   } catch (e) {
     console.error('[Notifications] Failed to initialize:', e);
     return false;
   }
 }
 
+/** Returns true if notifications are currently granted. */
+export function isPermissionGranted(): boolean {
+  return permissionGranted;
+}
+
+/**
+ * Generic notification scheduling helper used by start/end reminder helpers.
+ */
 export async function scheduleNotification(options: NotificationOptions): Promise<boolean> {
   try {
     const numId = typeof options.id === 'string'
@@ -54,7 +94,7 @@ export async function scheduleNotification(options: NotificationOptions): Promis
         body: options.body,
         schedule: { at: options.scheduleAt },
         channelId: CHANNEL_ID,
-        extra: options.extraData || { id: String(numId) },
+        extra: { ...(options.extraData || {}), id: String(numId) },
       }],
     });
     return true;
@@ -65,11 +105,34 @@ export async function scheduleNotification(options: NotificationOptions): Promis
 }
 
 /**
- * Schedule an end-time completion-prompt notification with action buttons.
- * Message: "Did you complete [Task Title]?"
- * Actions: Mark Completed (awards point) / Postpone (opens date picker to reschedule).
+ * Schedule the TASK START ALARM at the task's start time.
+ * Title: "Task Time Arrived!"
+ * Body:  "Your task '[Title]' is starting now."
  */
-export async function scheduleTaskEndReminderWithSnooze(
+export async function scheduleTaskStartReminder(
+  taskId: string,
+  taskTitle: string,
+  startTime: Date
+): Promise<boolean> {
+  return scheduleNotification({
+    id: `start_${taskId}`,
+    title: 'Task Time Arrived!',
+    body: `Your task '${taskTitle}' is starting now.`,
+    scheduleAt: startTime,
+    extraData: { taskId, taskTitle, actionType: 'start' },
+  });
+}
+
+/**
+ * Schedule the TASK END COMPLETION ALARM at the task's end time.
+ * Title: "Task Time Finished!"
+ * Body:  "Did you complete '[Title]'? Open app to confirm or reschedule."
+ *
+ * The notification carries action buttons (Complete / Reschedule). Tapping the
+ * notification (or a button) deep-links into the app, which highlights the
+ * originating task with [Complete] / [Reschedule] choices.
+ */
+export async function scheduleTaskEndReminder(
   taskId: string,
   taskTitle: string,
   endTime: Date
@@ -82,17 +145,17 @@ export async function scheduleTaskEndReminderWithSnooze(
     await LocalNotifications.schedule({
       notifications: [{
         id: numId,
-        title: 'Did you complete ' + taskTitle + '?',
-        body: `Task ended at ${endTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}. Mark complete or reschedule.`,
+        title: 'Task Time Finished!',
+        body: `Did you complete '${taskTitle}'? Open app to confirm or reschedule.`,
         schedule: { at: endTime },
         channelId: CHANNEL_ID,
         actionTypeId: 'TASK_END_REMINDER',
         extra: {
           taskId,
           taskTitle,
-          actionType: 'end_prompt',
+          actionType: 'end',
           actionIds: ['ACTION_COMPLETE', 'ACTION_POSTPONE'],
-          actionLabels: ['Mark Completed', 'Postpone / Reschedule'],
+          actionLabels: ['Complete', 'Reschedule'],
         },
       }],
     });
@@ -109,15 +172,24 @@ export async function cancelNotification(id: string | number): Promise<void> {
     : id;
   try {
     await LocalNotifications.cancel({ notifications: [{ id: numId }] });
-  } catch (e) {
+  } catch {
     // ignore
   }
+}
+
+export async function cancelTaskNotifications(taskId: string): Promise<void> {
+  // Cancel both the start and end reminders for a given task.
+  await Promise.all([
+    cancelNotification(`start_${taskId}`),
+    cancelNotification(`end_${taskId}`),
+    cancelNotification(taskId),
+  ]);
 }
 
 export async function cancelAllNotifications(): Promise<void> {
   try {
     await LocalNotifications.cancelAll();
-  } catch (e) {
+  } catch {
     // ignore
   }
 }
@@ -139,7 +211,7 @@ export async function showImmediateNotification(
       }],
     });
     return true;
-  } catch (e) {
+  } catch {
     // Fallback to Web Notifications API
     if ('Notification' in window && Notification.permission === 'granted') {
       new Notification(title, { body, icon: '🎓' });
@@ -150,35 +222,44 @@ export async function showImmediateNotification(
 }
 
 /**
- * Registers a listener for when the user taps a notification action.
- * Returns an unsubscribe function. Call once on app init.
+ * Registers a listener for when the user taps a notification or one of its
+ * action buttons. Returns an unsubscribe function. Call once on app init.
  */
 export async function registerNotificationActionListener(
-  onTaskEndPrompt: (taskId: string, taskTitle: string, action: 'complete' | 'postpone') => void
+  onTaskAction: (payload: NotificationTapPayload) => void
 ): Promise<() => void> {
   let sub: { remove: () => void } | undefined;
   try {
     const handle = await LocalNotifications.addListener(
       'localNotificationActionPerformed',
       (event) => {
-        const extra = event.notification.extra || {};
-        if (extra.actionType === 'end_prompt') {
-          // Determine which action button was tapped based on actionId
-          const actionId = (event as any).actionId || '';
+        const extra = (event.notification && event.notification.extra) || {};
+        const taskId: string = extra.taskId || '';
+        const taskTitle: string = extra.taskTitle || '';
+        const kind: NotificationTapKind = extra.actionType === 'start' ? 'start' : 'end';
+        const actionId = (event as any).actionId || '';
+
+        let action: 'complete' | 'postpone' | undefined;
+        if (kind === 'end') {
           if (actionId === 'ACTION_COMPLETE' || actionId === 'complete') {
-            onTaskEndPrompt(extra.taskId || '', extra.taskTitle || '', 'complete');
+            action = 'complete';
           } else if (actionId === 'ACTION_POSTPONE' || actionId === 'postpone') {
-            onTaskEndPrompt(extra.taskId || '', extra.taskTitle || '', 'postpone');
+            action = 'postpone';
           }
         }
+        onTaskAction({ taskId, taskTitle, kind, action });
       }
     );
     sub = handle as unknown as { remove: () => void };
-  } catch (e) {
+  } catch {
     // Web / unsupported — skip
   }
   return () => {
-    try { sub?.remove(); } catch { /* noop */ }
+    try {
+      sub?.remove();
+    } catch {
+      /* noop */
+    }
   };
 }
 
@@ -187,28 +268,6 @@ export async function registerNotificationActionListener(
  */
 export function isNativePlatform(): boolean {
   return typeof window !== 'undefined' && !!(window as any).Capacitor?.isNativePlatform?.();
-}
-
-export async function scheduleTaskStartReminder(
-  taskId: string,
-  taskTitle: string,
-  startTime: Date
-): Promise<boolean> {
-  return scheduleNotification({
-    id: `start_${taskId}`,
-    title: '🎯 Task Starting',
-    body: `"${taskTitle}" is starting now!`,
-    scheduleAt: startTime,
-    extraData: { taskId, actionType: 'start' },
-  });
-}
-
-export async function scheduleTaskEndReminder(
-  taskId: string,
-  taskTitle: string,
-  endTime: Date
-): Promise<boolean> {
-  return scheduleTaskEndReminderWithSnooze(taskId, taskTitle, endTime);
 }
 
 /**
@@ -224,3 +283,21 @@ export function openExactAlarmSettings(): void {
     }
   }
 }
+
+/**
+ * Dispatch a custom DOM event the rest of the app can listen for when a
+ * notification (or its action button) is tapped. The DailyActivityPage
+ * listens for `gate-prep:task-notification-tap` and opens the highlight UI.
+ */
+export function dispatchNotificationTap(payload: NotificationTapPayload): void {
+  try {
+    window.dispatchEvent(
+      new CustomEvent('gate-prep:task-notification-tap', { detail: payload })
+    );
+  } catch {
+    // ignore
+  }
+}
+
+// Re-export App for convenience to listeners that need to focus the app.
+export { App };

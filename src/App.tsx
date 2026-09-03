@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { AppData } from './lib/types';
 import { loadAppData, createDefaultAppData } from './lib/storage';
 import { useStore, useActions } from './lib/store';
-import { initializeNotifications, registerNotificationActionListener } from './lib/notificationService';
+import { initializeNotifications, registerNotificationActionListener, isPermissionGranted, checkNotificationPermission } from './lib/notificationService';
 import { checkForUpdates, CURRENT_APP_VERSION } from './lib/versionCheck';
 
 import BranchSetupPage from './pages/BranchSetupPage';
@@ -65,11 +65,21 @@ export default function App() {
     url: string | null;
   } | null>(null);
 
+  // Non-blocking toast for notification permission status / system messages.
+  const [toast, setToast] = useState<{ kind: 'info' | 'warn' | 'success'; text: string } | null>(null);
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 5000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
   // Check for app updates after load
   useEffect(() => {
     if (!loaded) return;
     (async () => {
       const result = await checkForUpdates();
+      // Only show the banner when the latest GitHub release is strictly
+      // newer than what is currently installed.
       if (result.hasUpdate && result.release) {
         setUpdateBanner({
           visible: true,
@@ -80,50 +90,65 @@ export default function App() {
     })();
   }, [loaded]);
 
+  // Proactively prompt for notification permission on app launch.
   useEffect(() => {
+    if (!loaded) return;
     (async () => {
       try {
-        await initializeNotifications();
+        const ok = await initializeNotifications();
+        if (!ok) {
+          const status = await checkNotificationPermission();
+          if (status.display === 'denied') {
+            setToast({
+              kind: 'warn',
+              text: 'Notifications are disabled. Enable them in Android Settings to receive task reminders.',
+            });
+          } else {
+            setToast({
+              kind: 'info',
+              text: 'Enable notifications to receive task start & end reminders.',
+            });
+          }
+        }
       } catch {
         // silent
       }
     })();
-  }, []);
+  }, [loaded]);
 
-  // Register notification action listener for end-prompt actions
-  // (Mark Completed / Postpone) — handle gracefully if feature unsupported.
+  // Register notification action listener for taps & action buttons.
+  // Tapping a notification (or its Complete/Reschedule button) deep-links
+  // back into the app with the originating task highlighted.
   useEffect(() => {
     let unsub: (() => void) | undefined;
     (async () => {
-      unsub = await registerNotificationActionListener((taskId, taskTitle, action) => {
-        if (action === 'complete' && taskId) {
-        // Mark the task complete in any matching log; the in-app modal handles
-        // visible state and confirmation.
-        try {
-          const today = new Date().toISOString().split('T')[0];
-          const log = (appData.dailyLogs || {})[today];
-          if (log) {
-            const updatedTasks = (log.tasks || []).map((t) =>
-              t.id === taskId
-                ? { ...t, completed: true, completedAt: new Date().toISOString() }
-                : t
-            );
-            actions.addOrUpdateDailyLog({ ...log, tasks: updatedTasks });
+      unsub = await registerNotificationActionListener((payload) => {
+        const taskId = payload.taskId;
+        if (!taskId) return;
+        if (payload.action === 'complete') {
+          try {
+            const today = new Date().toISOString().split('T')[0];
+            const log = (appData.dailyLogs || {})[today];
+            if (log) {
+              const updatedTasks = (log.tasks || []).map((t) =>
+                t.id === taskId
+                  ? { ...t, completed: true, completedAt: new Date().toISOString() }
+                  : t
+              );
+              actions.addOrUpdateDailyLog({ ...log, tasks: updatedTasks });
+            }
+          } catch {
+            // ignore
           }
-        } catch {
-          // ignore
         }
-      } else if (action === 'postpone' && taskId) {
-        // Hand-off: the user can open Daily > Tasks to reschedule.
         try {
           (window as any).dispatchEvent(
-            new CustomEvent('gate-prep:postpone-task', { detail: { taskId, taskTitle } })
+            new CustomEvent('gate-prep:task-notification-tap', { detail: payload })
           );
         } catch {
           // ignore
         }
-      }
-    });
+      });
     })();
     return () => {
       try { unsub?.(); } catch { /* noop */ }
@@ -266,6 +291,21 @@ export default function App() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Non-blocking permission toast */}
+      {toast && (
+        <div className="fixed bottom-24 left-4 right-4 z-50 animate-slide-up pointer-events-none flex justify-center">
+          <div className={`glass-panel rounded-xl px-4 py-3 border shadow-xl max-w-sm text-xs font-medium ${
+            toast.kind === 'warn'
+              ? 'border-amber-500/40 bg-amber-950/80 text-amber-200'
+              : toast.kind === 'success'
+              ? 'border-emerald-500/40 bg-emerald-950/80 text-emerald-200'
+              : 'border-brand-500/40 bg-brand-950/80 text-brand-200'
+          }`}>
+            {toast.text}
           </div>
         </div>
       )}

@@ -172,8 +172,12 @@ export default function ChecklistHubPage({ onEditBranch }: ChecklistHubPageProps
                 Active Branch
               </span>
             </div>
-            <p className="text-[11px] text-slate-400 block w-full pr-4 mt-0.5 break-words leading-snug max-w-full truncate" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
-              {currentBranchInfo.description}
+            <p className="text-[11px] text-slate-400 block w-full mt-0.5 leading-snug flex flex-wrap gap-1" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+              {currentBranchInfo.description.split(',').map((part, idx) => (
+                <span key={idx} className="px-1.5 py-0.5 rounded-md bg-white/5 text-slate-300 text-[10px] font-medium border border-white/5">
+                  {part.trim()}
+                </span>
+              ))}
             </p>
           </div>
         </div>
@@ -208,7 +212,7 @@ export default function ChecklistHubPage({ onEditBranch }: ChecklistHubPageProps
                   Download GATE Prep Android App
                 </h3>
                 <p className="text-[10px] text-slate-400">
-                  APK v1.0.18 · Direct download · No Play Store required · Native notifications included
+                  APK v1.0.19 · Direct download · No Play Store required · Native notifications included
                 </p>
               </div>
             </div>

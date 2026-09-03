@@ -3,7 +3,6 @@ import {
   Calendar,
   CheckCircle2,
   Plus,
-  Clock,
   Zap,
   ChevronLeft,
   ChevronRight,
@@ -11,8 +10,9 @@ import {
   Clock as ClockIcon,
   X,
   Trash2,
-  AlertCircle,
   CalendarPlus,
+  Check,
+  RotateCcw,
 } from 'lucide-react';
 import { useStore, useActions } from '../lib/store';
 import { DailyLog, DailyTaskItem } from '../lib/types';
@@ -22,6 +22,7 @@ import {
   subDays,
   addDays,
   generateHeatmapGrid,
+  groupHeatmapIntoWeeks,
 } from '../lib/streakEngine';
 import PomodoroTimer from '../components/PomodoroTimer';
 import { fireCelebrationConfetti } from '../lib/confetti';
@@ -29,8 +30,9 @@ import {
   initializeNotifications,
   scheduleTaskStartReminder,
   scheduleTaskEndReminder,
-  cancelNotification,
+  cancelTaskNotifications,
   showImmediateNotification,
+  isPermissionGranted,
 } from '../lib/notificationService';
 
 // ---------------------------------------------------------------------------
@@ -94,6 +96,7 @@ export default function DailyActivityPage() {
 
   // ---- Section 1 shared ----
   const heatmapDays = useMemo(() => generateHeatmapGrid(appData, 14), [appData]);
+  const heatmapWeeks = useMemo(() => groupHeatmapIntoWeeks(heatmapDays), [heatmapDays]);
   const [pomodoroMinutes, setPomodoroMinutes] = useState(0);
 
   // ---- Section 2 shared ----
@@ -167,6 +170,19 @@ export default function DailyActivityPage() {
   const [snoozeModal, setSnoozeModal] = useState<{ taskId: string; title: string } | null>(null);
   const [snoozeDate, setSnoozeDate] = useState(formatDateKey(new Date()));
 
+  // Task highlight (notification deep-link) — Complete / Reschedule options.
+  const [highlightedTask, setHighlightedTask] = useState<
+    | { taskId: string; taskTitle: string; date: string }
+    | null
+  >(null);
+  // Non-blocking toast for notification permission state.
+  const [permToast, setPermToast] = useState<string | null>(null);
+  useEffect(() => {
+    if (!permToast) return;
+    const t = setTimeout(() => setPermToast(null), 5000);
+    return () => clearTimeout(t);
+  }, [permToast]);
+
   // Task form state
   const [taskTitle, setTaskTitle] = useState('');
   const [taskDescription, setTaskDescription] = useState('');
@@ -217,6 +233,23 @@ export default function DailyActivityPage() {
     );
   };
 
+  // Listen for notification taps (deep-links from background).
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as {
+        taskId: string;
+        taskTitle: string;
+        date?: string;
+      };
+      if (!detail?.taskId) return;
+      const targetDate = detail.date || todayKey;
+      setSelectedDate(targetDate);
+      setHighlightedTask({ taskId: detail.taskId, taskTitle: detail.taskTitle, date: targetDate });
+    };
+    window.addEventListener('gate-prep:task-notification-tap', handler);
+    return () => window.removeEventListener('gate-prep:task-notification-tap', handler);
+  }, [todayKey]);
+
   // ---- Add Task ----
   const handleAddTask = (e: React.FormEvent) => {
     e.preventDefault();
@@ -239,29 +272,23 @@ export default function DailyActivityPage() {
     };
     actions.addOrUpdateDailyLog(updatedLog);
 
-    // Schedule notifications
+    // Schedule start & end alarms using native notification engine.
     const now = new Date();
     if (taskStartTime) {
       const [sh, sm] = taskStartTime.split(':').map(Number);
       const startTarget = new Date(now);
       startTarget.setHours(sh, sm, 0, 0);
-      if (taskReminder) {
-        const reminderDelay =
-          startTarget.getTime() - now.getTime() - REMINDER_OFFSET_MS[taskReminder];
-        if (reminderDelay > 0) {
-          scheduleWebNotification(
-            `⏰ Reminder: ${taskTitle}`,
-            REMINDER_LABELS[taskReminder] + ' — ' + taskTitle,
-            reminderDelay
-          );
-        }
-      }
       if (startTarget.getTime() > now.getTime()) {
-        scheduleWebNotification(
-          `🎯 Task Starting: ${taskTitle}`,
-          taskDescription ? `${taskDescription.substring(0, 80)}...` : 'Your task is starting now!',
-          startTarget.getTime() - now.getTime()
-        );
+        scheduleTaskStartReminder(newTask.id, taskTitle.trim(), startTarget).catch(() => {});
+      }
+    }
+    if (taskEndTime) {
+      const [eh, em] = taskEndTime.split(':').map(Number);
+      const endTarget = new Date(now);
+      endTarget.setHours(eh, em, 0, 0);
+      // If end time already passed today, skip scheduling (task already done or overdue).
+      if (endTarget.getTime() > now.getTime()) {
+        scheduleTaskEndReminder(newTask.id, taskTitle.trim(), endTarget).catch(() => {});
       }
     }
 
@@ -353,8 +380,8 @@ export default function DailyActivityPage() {
 
   // ---- Delete Task ----
   const handleDeleteTask = async (taskId: string, taskTitle: string) => {
-    await cancelNotification(`start_${taskId}`);
-    await cancelNotification(`end_${taskId}`);
+    // Cancel BOTH scheduled start and end notifications for this task.
+    await cancelTaskNotifications(taskId);
     const tid = endTimeTimers.current.get(taskId);
     if (tid) {
       clearTimeout(tid);
@@ -401,35 +428,60 @@ export default function DailyActivityPage() {
             </div>
           </div>
 
+          {/* GitHub-style heatmap: weeks as columns, month labels above grid */}
           <div className="overflow-x-auto pb-1">
-            <div className="grid grid-flow-col grid-rows-7 gap-1 min-w-[320px]">
-              {heatmapDays.map((day) => {
-                const isCurrent = day.dateKey === selectedDate;
-                return (
-                  <button
-                    key={day.dateKey}
-                    onClick={() => setSelectedDate(day.dateKey)}
-                    className={`w-3.5 h-3.5 rounded-sm transition-transform hover:scale-125 relative ${
-                      isCurrent ? 'ring-2 ring-white z-10' : ''
-                    } ${
-                      day.intensity === 4
-                        ? 'bg-emerald-400 shadow-glow-emerald'
-                        : day.intensity === 3
-                        ? 'bg-emerald-500'
-                        : day.intensity === 2
-                        ? 'bg-emerald-600/80'
-                        : day.intensity === 1
-                        ? 'bg-emerald-800/60'
-                        : 'bg-slate-900 border border-white/[0.03]'
-                    }`}
-                    title={`${day.dateKey}: ${
-                      day.active
-                        ? `${day.tasksDone} tasks + ${day.pomodoroSessions || 0} pomodoros`
-                        : 'No activity'
-                    }`}
-                  />
-                );
-              })}
+            {/* Month labels row */}
+            <div className="flex gap-1 mb-0.5 min-w-[320px]">
+              {heatmapWeeks.map((week, wi) => (
+                <div
+                  key={wi}
+                  className="w-3.5 h-3.5 flex items-center justify-center"
+                >
+                  {week.monthLabel && (
+                    <span className="text-[9px] text-slate-500 font-semibold leading-none select-none whitespace-nowrap">
+                      {week.monthLabel}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Day grid: each column is one week (top=Sunday, bottom=Saturday) */}
+            <div className="flex flex-col gap-1">
+              {/* Row labels: weekday abbreviations */}
+              <div className="flex gap-1 min-w-[320px]">
+                {heatmapWeeks.map((week, wi) => (
+                  <div key={wi} className="w-3.5 flex flex-col gap-1">
+                    {week.days.map((day) => {
+                      const isCurrent = day.dateKey === selectedDate;
+                      return (
+                        <button
+                          key={day.dateKey}
+                          onClick={() => setSelectedDate(day.dateKey)}
+                          className={`w-3.5 h-3.5 rounded-sm transition-transform hover:scale-125 relative ${
+                            isCurrent ? 'ring-2 ring-white z-10' : ''
+                          } ${
+                            day.intensity === 4
+                              ? 'bg-emerald-400 shadow-glow-emerald'
+                              : day.intensity === 3
+                              ? 'bg-emerald-500'
+                              : day.intensity === 2
+                              ? 'bg-emerald-600/80'
+                              : day.intensity === 1
+                              ? 'bg-emerald-800/60'
+                              : 'bg-slate-900 border border-white/[0.03]'
+                          }`}
+                          title={`${day.dateKey}: ${
+                            day.active
+                              ? `${day.tasksDone} task${day.tasksDone !== 1 ? 's' : ''} + ${day.pomodoroSessions || 0} pomodoro${(day.pomodoroSessions || 0) !== 1 ? 's' : ''}`
+                              : 'No activity'
+                          }`}
+                        />
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -470,7 +522,16 @@ export default function DailyActivityPage() {
 
           {/* TickTick-style + Add Task button */}
           <button
-            onClick={() => setShowTaskModal(true)}
+            onClick={async () => {
+              // Proactively request notification permission when opening Add Task modal.
+              if (!isPermissionGranted()) {
+                const ok = await initializeNotifications();
+                if (!ok) {
+                  setPermToast('Enable notifications in Android Settings to receive reminders.');
+                }
+              }
+              setShowTaskModal(true);
+            }}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold shadow-md shadow-brand-900/30 transition-colors active:scale-95"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -845,6 +906,70 @@ export default function DailyActivityPage() {
                 Reschedule
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================================================================
+          HIGHLIGHTED TASK MODAL (notification deep-link)
+          Shows [Complete] / [Reschedule] actions when user taps a
+          notification from the background.
+      ================================================================ */}
+      {highlightedTask && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="glass-panel rounded-3xl p-5 sm:p-6 w-full max-w-sm border border-brand-500/40 shadow-2xl animate-slide-up">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-bold text-brand-300 flex items-center gap-2">
+                🔔 Task Reminder
+              </h3>
+              <button
+                onClick={() => setHighlightedTask(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-sm text-slate-200 mb-5 leading-snug">
+              &ldquo;<span className="text-white font-semibold">{highlightedTask.taskTitle}</span>&rdquo;
+            </p>
+
+            {/* Action buttons */}
+            <div className="flex gap-2.5">
+              <button
+                type="button"
+                onClick={() => {
+                  handleToggleTask(highlightedTask.taskId);
+                  setHighlightedTask(null);
+                }}
+                className="flex-1 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-colors shadow-md shadow-emerald-900/30 flex items-center justify-center gap-2"
+              >
+                <Check className="w-3.5 h-3.5" />
+                Complete
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSnoozeModal({ taskId: highlightedTask.taskId, title: highlightedTask.taskTitle });
+                  setHighlightedTask(null);
+                }}
+                className="flex-1 py-2.5 px-4 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold transition-colors shadow-md shadow-amber-900/30 flex items-center justify-center gap-2"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                Reschedule
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================================================================
+          NON-BLOCKING PERMISSION TOAST (notification permission)
+      ================================================================ */}
+      {permToast && (
+        <div className="fixed bottom-24 left-4 right-4 z-50 animate-slide-up pointer-events-none flex justify-center">
+          <div className="glass-panel rounded-xl px-4 py-3 border border-amber-500/30 bg-slate-900/90 max-w-sm text-xs text-amber-200 shadow-xl">
+            {permToast}
           </div>
         </div>
       )}

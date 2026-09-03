@@ -201,8 +201,15 @@ export function calculateStreakStats(appData: AppData): StreakInfo {
 
 /**
  * Generate 12-week (84 days) calendar heatmap matrix
- * Intensity is based on activity points: 1 point per completed task + 1 point per completed Pomodoro session
- * Tile colors darken based on total points (0-4 intensity levels)
+ *
+ * Intensity is driven by task-completion counts to mirror the GitHub-style
+ * activity matrix. The mapping:
+ *  - 0 tasks   → 0 (empty, neutral background)
+ *  - 1 task    → 1 (light green)
+ *  - 2–3 tasks → 2 (medium green)
+ *  - 4–5 tasks → 3 (strong green)
+ *  - 6+ tasks  → 4 (deepest green)
+ * Pomodoro sessions are added as a secondary activity boost.
  */
 export interface HeatmapDay {
   dateKey: string;
@@ -231,14 +238,16 @@ export function generateHeatmapGrid(appData: AppData, weeksCount = 12): HeatmapD
     const dKey = formatDateKey(d);
     const stats = isDateActive(dKey, appData);
 
-    // Calculate activity points: 1 point per completed task + 1 point per completed Pomodoro session
-    let activityPoints = (stats.tasksDone || 0) + (stats.pomodoroSessions || 0 || 0);
+    // Activity points: 1 per completed task + 1 per completed Pomodoro session.
+    const activityPoints = (stats.tasksDone || 0) + (stats.pomodoroSessions || 0);
 
+    // Map completion count to intensity shade.
+    // 1 completed task already produces a visible (light-green) cell.
     let intensity = 0;
-    if (stats.active) {
-      if (activityPoints >= 8) intensity = 4;
-      else if (activityPoints >= 5) intensity = 3;
-      else if (activityPoints >= 3) intensity = 2;
+    if (stats.active || activityPoints > 0) {
+      if (activityPoints >= 6) intensity = 4;
+      else if (activityPoints >= 4) intensity = 3;
+      else if (activityPoints >= 2) intensity = 2;
       else if (activityPoints >= 1) intensity = 1;
     }
 
@@ -257,4 +266,36 @@ export function generateHeatmapGrid(appData: AppData, weeksCount = 12): HeatmapD
   }
 
   return days;
+}
+
+/**
+ * Group the heatmap matrix into columns of 7 days (weeks) — used for
+ * rendering month labels above specific week columns.
+ */
+export interface HeatmapWeek {
+  weekIndex: number;
+  startDay: HeatmapDay;
+  days: HeatmapDay[];
+  monthLabel: string | null;
+}
+
+export function groupHeatmapIntoWeeks(days: HeatmapDay[]): HeatmapWeek[] {
+  const weeks: HeatmapWeek[] = [];
+  for (let i = 0; i < days.length; i += 7) {
+    const slice = days.slice(i, i + 7);
+    if (!slice.length) continue;
+    const first = slice[0];
+    const prev = i > 0 ? days[i - 1] : null;
+    // Show a month label whenever the month name changes between this week and the previous one,
+    // and on the very first week.
+    const showLabel =
+      !prev || prev.monthName !== first.monthName;
+    weeks.push({
+      weekIndex: i / 7,
+      startDay: first,
+      days: slice,
+      monthLabel: showLabel ? first.monthName : null,
+    });
+  }
+  return weeks;
 }
