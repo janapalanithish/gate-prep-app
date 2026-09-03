@@ -18,6 +18,7 @@ import {
   CalendarPlus,
   Target,
   Sparkles,
+  Trash2,
 } from 'lucide-react';
 import { useStore, useActions } from '../lib/store';
 import { DailyLog, DailyTaskItem } from '../lib/types';
@@ -284,6 +285,20 @@ export default function TasksPage() {
     );
   };
 
+  // ---- Delete Task ----
+  const handleDeleteTask = async (taskId: string, taskTitle: string) => {
+    await cancelNotification(`start_${taskId}`);
+    await cancelNotification(`end_${taskId}`);
+    const updatedTasks = (currentLog.tasks || []).filter((t) => t.id !== taskId);
+    const updatedLog: DailyLog = {
+      ...currentLog,
+      tasks: updatedTasks,
+      updatedAt: new Date().toISOString(),
+    };
+    actions.addOrUpdateDailyLog(updatedLog);
+    showImmediateNotification('🗑️ Task Deleted', `"${taskTitle}" removed from schedule.`);
+  };
+
   const completionPercentage = totalTasksCount > 0
     ? Math.round((completedCount / totalTasksCount) * 100)
     : 0;
@@ -502,17 +517,27 @@ export default function TasksPage() {
                   </div>
                 </div>
 
-                {/* Snooze / Postpone Button */}
-                {!task.completed && (
+                {/* Snooze / Postpone + Delete Buttons */}
+                <div className="flex items-center gap-1 shrink-0">
+                  {!task.completed && (
+                    <button
+                      type="button"
+                      onClick={() => setSnoozeModal({ taskId: task.id, title: task.title })}
+                      className="p-2 rounded-lg hover:bg-amber-500/20 text-slate-500 hover:text-amber-300 transition-colors shrink-0 border border-transparent hover:border-amber-500/30"
+                      title="Snooze / Postpone to another date"
+                    >
+                      <CalendarPlus className="w-4 h-4" />
+                    </button>
+                  )}
                   <button
                     type="button"
-                    onClick={() => setSnoozeModal({ taskId: task.id, title: task.title })}
-                    className="p-2 rounded-lg hover:bg-amber-500/20 text-slate-500 hover:text-amber-300 transition-colors shrink-0 border border-transparent hover:border-amber-500/30"
-                    title="Snooze / Postpone to another date"
+                    onClick={() => handleDeleteTask(task.id, task.title)}
+                    className="p-2 rounded-lg hover:bg-rose-500/20 text-slate-500 hover:text-rose-400 transition-colors shrink-0 border border-transparent hover:border-rose-500/30"
+                    title="Delete Task"
                   >
-                    <CalendarPlus className="w-4 h-4" />
+                    <Trash2 className="w-4 h-4" />
                   </button>
-                )}
+                </div>
               </div>
             </div>
           ))

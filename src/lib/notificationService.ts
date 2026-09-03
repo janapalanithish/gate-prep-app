@@ -3,6 +3,7 @@
  * Supports Android notification channels with snooze/postpone actions
  */
 import { LocalNotifications, PermissionStatus } from '@capacitor/local-notifications';
+import { App } from '@capacitor/app';
 
 export interface NotificationOptions {
   id: string | number;
@@ -20,27 +21,20 @@ let permissionChecked = false;
 let permissionGranted = false;
 
 export async function initializeNotifications(): Promise<boolean> {
-  if (permissionChecked && permissionGranted) return true;
-
+  // Proactively request on app launch / task creation
   try {
-    // Check current permission status
     const status: PermissionStatus = await LocalNotifications.checkPermissions();
-    if (status.display === 'granted') {
-      permissionGranted = true;
-      permissionChecked = true;
-      return true;
+    if (status.display !== 'granted') {
+      const result: PermissionStatus = await LocalNotifications.requestPermissions();
+      if (result.display === 'granted') {
+        permissionGranted = true;
+        permissionChecked = true;
+        return true;
+      }
     }
-
-    // Request permission if not granted
-    const result: PermissionStatus = await LocalNotifications.requestPermissions();
-    permissionGranted = result.display === 'granted';
+    permissionGranted = true;
     permissionChecked = true;
-
-    if (!permissionGranted) {
-      console.warn('[Notifications] Permission denied — notifications will not fire on Android 13+');
-    }
-
-    return permissionGranted;
+    return true;
   } catch (e) {
     console.error('[Notifications] Failed to initialize:', e);
     return false;
@@ -71,8 +65,9 @@ export async function scheduleNotification(options: NotificationOptions): Promis
 }
 
 /**
- * Schedule an end-time completion-prompt notification with Snooze action.
- * The notification includes action buttons that the Android plugin handles.
+ * Schedule an end-time completion-prompt notification with action buttons.
+ * Message: "Did you complete [Task Title]?"
+ * Actions: Mark Completed (awards point) / Postpone (opens date picker to reschedule).
  */
 export async function scheduleTaskEndReminderWithSnooze(
   taskId: string,
@@ -87,8 +82,8 @@ export async function scheduleTaskEndReminderWithSnooze(
     await LocalNotifications.schedule({
       notifications: [{
         id: numId,
-        title: '⏰ Task Complete?',
-        body: `Did you finish "${taskTitle}"?`,
+        title: 'Did you complete ' + taskTitle + '?',
+        body: `Task ended at ${endTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}. Mark complete or reschedule.`,
         schedule: { at: endTime },
         channelId: CHANNEL_ID,
         actionTypeId: 'TASK_END_REMINDER',
@@ -96,6 +91,8 @@ export async function scheduleTaskEndReminderWithSnooze(
           taskId,
           taskTitle,
           actionType: 'end_prompt',
+          actionIds: ['ACTION_COMPLETE', 'ACTION_POSTPONE'],
+          actionLabels: ['Mark Completed', 'Postpone / Reschedule'],
         },
       }],
     });
@@ -152,7 +149,45 @@ export async function showImmediateNotification(
   }
 }
 
-// ---- Task reminder helpers ----
+/**
+ * Registers a listener for when the user taps a notification action.
+ * Returns an unsubscribe function. Call once on app init.
+ */
+export async function registerNotificationActionListener(
+  onTaskEndPrompt: (taskId: string, taskTitle: string, action: 'complete' | 'postpone') => void
+): Promise<() => void> {
+  let sub: { remove: () => void } | undefined;
+  try {
+    const handle = await LocalNotifications.addListener(
+      'localNotificationActionPerformed',
+      (event) => {
+        const extra = event.notification.extra || {};
+        if (extra.actionType === 'end_prompt') {
+          // Determine which action button was tapped based on actionId
+          const actionId = (event as any).actionId || '';
+          if (actionId === 'ACTION_COMPLETE' || actionId === 'complete') {
+            onTaskEndPrompt(extra.taskId || '', extra.taskTitle || '', 'complete');
+          } else if (actionId === 'ACTION_POSTPONE' || actionId === 'postpone') {
+            onTaskEndPrompt(extra.taskId || '', extra.taskTitle || '', 'postpone');
+          }
+        }
+      }
+    );
+    sub = handle as unknown as { remove: () => void };
+  } catch (e) {
+    // Web / unsupported — skip
+  }
+  return () => {
+    try { sub?.remove(); } catch { /* noop */ }
+  };
+}
+
+/**
+ * Check if the app is running on a native platform (Capacitor Android/iOS).
+ */
+export function isNativePlatform(): boolean {
+  return typeof window !== 'undefined' && !!(window as any).Capacitor?.isNativePlatform?.();
+}
 
 export async function scheduleTaskStartReminder(
   taskId: string,

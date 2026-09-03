@@ -10,6 +10,7 @@ import {
   Bell,
   Clock as ClockIcon,
   X,
+  Trash2,
   AlertCircle,
   CalendarPlus,
 } from 'lucide-react';
@@ -350,6 +351,25 @@ export default function DailyActivityPage() {
     );
   };
 
+  // ---- Delete Task ----
+  const handleDeleteTask = async (taskId: string, taskTitle: string) => {
+    await cancelNotification(`start_${taskId}`);
+    await cancelNotification(`end_${taskId}`);
+    const tid = endTimeTimers.current.get(taskId);
+    if (tid) {
+      clearTimeout(tid);
+      endTimeTimers.current.delete(taskId);
+    }
+    const updatedTasks = (currentLog.tasks || []).filter((t) => t.id !== taskId);
+    const updatedLog: DailyLog = {
+      ...currentLog,
+      tasks: updatedTasks,
+      updatedAt: new Date().toISOString(),
+    };
+    actions.addOrUpdateDailyLog(updatedLog);
+    scheduleWebNotification(`🗑️ Task Deleted`, `"${taskTitle}" removed from schedule.`, 0);
+  };
+
   return (
     <div className="space-y-5 animate-fade-in">
 
@@ -627,6 +647,15 @@ export default function DailyActivityPage() {
                       <CalendarPlus className="w-3.5 h-3.5" />
                     </button>
                   )}
+                  {/* Delete button */}
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteTask(task.id, task.title)}
+                    className="p-1.5 rounded-lg hover:bg-rose-500/20 text-slate-500 hover:text-rose-400 transition-colors shrink-0"
+                    title="Delete Task"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               ))
             )}

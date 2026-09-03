@@ -189,38 +189,40 @@ export default function ChecklistHubPage({ onEditBranch }: ChecklistHubPageProps
         )}
       </div>
 
-      {/* APK Download Banner */}
-      <a
-        href="https://github.com/janapalanithish/gate-prep-app/releases/latest/download/app-debug.apk"
-        target="_blank"
-        rel="noopener noreferrer"
-        download="gate-prep-app.apk"
-        className="block glass-card rounded-2xl p-4 border border-brand-500/20 bg-gradient-to-r from-brand-900/30 via-slate-900/40 to-brand-900/30 hover:from-brand-900/50 hover:to-brand-900/40 transition-all shadow-lg shadow-brand-900/10 group"
-      >
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-brand-500 to-indigo-600 text-white flex items-center justify-center shadow-glow-brand shrink-0">
-              <Smartphone className="w-5 h-5" />
+      {/* APK Download Banner — hidden inside native Android APK (Capacitor) */}
+      {typeof window !== 'undefined' && !(window as any).Capacitor?.isNativePlatform() && (
+        <a
+          href="https://github.com/janapalanithish/gate-prep-app/releases/latest/download/app-debug.apk"
+          target="_blank"
+          rel="noopener noreferrer"
+          download="gate-prep-app.apk"
+          className="block glass-card rounded-2xl p-4 border border-brand-500/20 bg-gradient-to-r from-brand-900/30 via-slate-900/40 to-brand-900/30 hover:from-brand-900/50 hover:to-brand-900/40 transition-all shadow-lg shadow-brand-900/10 group"
+        >
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-brand-500 to-indigo-600 text-white flex items-center justify-center shadow-glow-brand shrink-0">
+                <Smartphone className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-white group-hover:text-brand-200 transition-colors">
+                  Download GATE Prep Android App
+                </h3>
+                <p className="text-[10px] text-slate-400">
+                  APK v1.0.18 · Direct download · No Play Store required · Native notifications included
+                </p>
+              </div>
             </div>
-            <div>
-              <h3 className="text-sm font-bold text-white group-hover:text-brand-200 transition-colors">
-                Download GATE Prep Android App
-              </h3>
-              <p className="text-[10px] text-slate-400">
-                APK v1.0.17 · Direct download · No Play Store required · Native notifications included
-              </p>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-[10px] px-2.5 py-1 rounded-full bg-brand-600 text-white font-bold shadow-md shadow-brand-900/30">
+                APK
+              </span>
+              <span className="text-[10px] font-semibold text-brand-300 flex items-center gap-1 group-hover:text-brand-200">
+                Download <ArrowUpRight className="w-3 h-3" />
+              </span>
             </div>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <span className="text-[10px] px-2.5 py-1 rounded-full bg-brand-600 text-white font-bold shadow-md shadow-brand-900/30">
-              APK
-            </span>
-            <span className="text-[10px] font-semibold text-brand-300 flex items-center gap-1 group-hover:text-brand-200">
-              Download <ArrowUpRight className="w-3 h-3" />
-            </span>
-          </div>
-        </div>
-      </a>
+        </a>
+      )}
 
       {/* TOP DUAL PROGRESS BARS (Initial Coverage & Revision) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">

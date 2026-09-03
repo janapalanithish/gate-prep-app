@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { AppData } from './lib/types';
 import { loadAppData, createDefaultAppData } from './lib/storage';
 import { useStore, useActions } from './lib/store';
-import { initializeNotifications } from './lib/notificationService';
+import { initializeNotifications, registerNotificationActionListener } from './lib/notificationService';
 import { checkForUpdates, CURRENT_APP_VERSION } from './lib/versionCheck';
 
 import BranchSetupPage from './pages/BranchSetupPage';
@@ -89,6 +89,46 @@ export default function App() {
       }
     })();
   }, []);
+
+  // Register notification action listener for end-prompt actions
+  // (Mark Completed / Postpone) — handle gracefully if feature unsupported.
+  useEffect(() => {
+    let unsub: (() => void) | undefined;
+    (async () => {
+      unsub = await registerNotificationActionListener((taskId, taskTitle, action) => {
+        if (action === 'complete' && taskId) {
+        // Mark the task complete in any matching log; the in-app modal handles
+        // visible state and confirmation.
+        try {
+          const today = new Date().toISOString().split('T')[0];
+          const log = (appData.dailyLogs || {})[today];
+          if (log) {
+            const updatedTasks = (log.tasks || []).map((t) =>
+              t.id === taskId
+                ? { ...t, completed: true, completedAt: new Date().toISOString() }
+                : t
+            );
+            actions.addOrUpdateDailyLog({ ...log, tasks: updatedTasks });
+          }
+        } catch {
+          // ignore
+        }
+      } else if (action === 'postpone' && taskId) {
+        // Hand-off: the user can open Daily > Tasks to reschedule.
+        try {
+          (window as any).dispatchEvent(
+            new CustomEvent('gate-prep:postpone-task', { detail: { taskId, taskTitle } })
+          );
+        } catch {
+          // ignore
+        }
+      }
+    });
+    })();
+    return () => {
+      try { unsub?.(); } catch { /* noop */ }
+    };
+  }, [appData.dailyLogs, actions]);
 
   const handleReset = () => {
     setShowBranchSetup(true);
