@@ -168,11 +168,10 @@ const SYLLABUS_CS: Subject[] = [
       ],
     },
     {
-      name: 'I/O Interface & Storage',
+      name: 'I/O Interface',
       subtopics: [
         'Programmed I/O, Interrupt Driven I/O',
         'Direct Memory Access (DMA) & Controller',
-        'Secondary Storage & Disk Scheduling Algorithms',
       ],
     },
   ], 2),
@@ -417,25 +416,24 @@ const SYLLABUS_CS: Subject[] = [
       subtopics: [
         'IPv4 & IPv6 Header Formats & Fragmentation',
         'IPv4 Addressing: Classful & Classless (CIDR), Subnetting, Supernetting',
+        'NAT (Network Address Translation) & its Types',
         'Routing Algorithms: Distance Vector (Bellman-Ford), Link State (Dijkstra)',
         'Routing Protocols: RIP, OSPF, BGP',
-        'Network Layer Protocols: ARP, RARP, ICMP, NAT, DHCP',
+        'DNS: Resolution, Records & Hierarchy',
       ],
     },
     {
       name: 'Transport Layer',
       subtopics: [
-        'Port Numbers & Sockets Interface',
-        'UDP: Connectionless Datagram Service',
-        'TCP: 3-Way Handshake, Connection Teardown',
-        'TCP Flow Control (Sliding Window) & Timer Management',
+        'TCP: 3-Way Handshake, Connection Teardown, Sliding Window Flow Control',
         'TCP Congestion Control: Slow Start, AIMD, Fast Retransmit, Fast Recovery',
+        'UDP: Connectionless Datagram Service & Use Cases',
       ],
     },
     {
       name: 'Application Layer & Network Security',
       subtopics: [
-        'Protocols: DNS, HTTP/HTTPS, FTP, SMTP, POP3, IMAP',
+        'Protocols: DNS, HTTP / HTTPS (Request/Response, Methods, Headers, Cookies)',
         'Cryptography: Symmetric vs Asymmetric (RSA, DES, AES)',
         'Digital Signatures, Certificates & Public Key Infrastructure',
         'Firewalls, Packet Filters & TLS/SSL',

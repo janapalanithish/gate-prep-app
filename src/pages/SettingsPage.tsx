@@ -15,6 +15,7 @@ import {
   Shield,
   Volume2,
   Smartphone,
+  ArrowUpRight,
 } from 'lucide-react';
 import { useStore, useActions } from '../lib/store';
 import { UserSettings, GATE_BRANCHES } from '../lib/types';
@@ -281,6 +282,33 @@ export default function SettingsPage({ onResetBranch, onBack }: SettingsPageProp
             Import JSON Backup
           </button>
         </div>
+      </div>
+
+      {/* Android APK Download */}
+      <div className="glass-panel rounded-3xl p-5 border border-brand-500/30 bg-gradient-to-br from-brand-950/30 via-slate-900/60 to-brand-950/30 space-y-3">
+        <div className="flex items-center gap-2 text-sm font-bold text-brand-300 uppercase tracking-wider">
+          <Smartphone className="w-4 h-4" />
+          Download Android App
+        </div>
+        <p className="text-xs text-slate-300 leading-relaxed">
+          Get the native GATE Prep experience on your Android device with exact alarm scheduling and notifications.
+          <br />
+          <span className="text-brand-300 font-medium">No Play Store required.</span>
+        </p>
+        <a
+          href="https://github.com/janapalanithish/gate-prep-app/releases/latest/download/app-debug.apk"
+          target="_blank"
+          rel="noopener noreferrer"
+          download="gate-prep-app.apk"
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-brand-900/20 transition-all active:scale-95"
+        >
+          <Download className="w-4 h-4" />
+          Download GATE Prep Android App (APK)
+          <ArrowUpRight className="w-3 h-3" />
+        </a>
+        <p className="text-[10px] text-slate-500">
+          Download APK directly to install on your Android device (No Play Store required).
+        </p>
       </div>
 
       {/* Danger Zone */}

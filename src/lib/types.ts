@@ -33,7 +33,7 @@ export const GATE_BRANCHES: GateBranchInfo[] = [
     code: 'CS',
     name: 'Computer Science & Information Technology',
     shortName: 'GATE CS / IT',
-    description: 'Algorithms, Data Structures, OS, DBMS, Networks, TOC, Compiler, COA, Math & Aptitude',
+    description: 'Algorithms, Data Structures, OS, DBMS, Networks, TOC, Compiler, COA',
     icon: '💻',
     color: 'from-blue-500 to-indigo-600',
   },
@@ -149,9 +149,13 @@ export interface Subject {
 export interface DailyTaskItem {
   id: string;
   title: string;
+  description?: string;
   completed: boolean;
   subjectName?: string;
   estimatedMinutes?: number;
+  startTime?: string; // HH:MM
+  endTime?: string;   // HH:MM
+  reminderOffset?: 'at_start' | '5min' | '10min' | '30min' | '1hour' | '1day';
   completedAt?: string;
 }
 
@@ -163,6 +167,7 @@ export interface DailyLog {
   tasks: DailyTaskItem[];
   totalStudyMinutes: number;
   completed: boolean; // Marked active for streak
+  pomodoroSessions: number; // Count of completed Focus Study sessions (Pomodoro)
   createdAt: string;
   updatedAt: string;
 }

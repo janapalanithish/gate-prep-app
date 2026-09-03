@@ -5,7 +5,6 @@ import {
   Search,
   Filter,
   Plus,
-  Trash2,
   Edit3,
   ChevronDown,
   ChevronUp,
@@ -17,6 +16,9 @@ import {
   ArrowUpDown,
   ListFilter,
   SlidersHorizontal,
+  Smartphone,
+  Download,
+  ArrowUpRight,
 } from 'lucide-react';
 import { useStore, useActions, useProgressStats } from '../lib/store';
 import { Subject, Topic, Subtopic, GateBranch, GATE_BRANCHES } from '../lib/types';
@@ -170,7 +172,7 @@ export default function ChecklistHubPage({ onEditBranch }: ChecklistHubPageProps
                 Active Branch
               </span>
             </div>
-            <p className="text-[11px] text-slate-400 truncate max-w-xs sm:max-w-md">
+            <p className="text-[11px] text-slate-400 truncate block w-full pr-4 overflow-hidden text-ellipsis whitespace-nowrap">
               {currentBranchInfo.description}
             </p>
           </div>
@@ -186,6 +188,39 @@ export default function ChecklistHubPage({ onEditBranch }: ChecklistHubPageProps
           </button>
         )}
       </div>
+
+      {/* APK Download Banner */}
+      <a
+        href="https://github.com/janapalanithish/gate-prep-app/releases/latest/download/app-debug.apk"
+        target="_blank"
+        rel="noopener noreferrer"
+        download="gate-prep-app.apk"
+        className="block glass-card rounded-2xl p-4 border border-brand-500/20 bg-gradient-to-r from-brand-900/30 via-slate-900/40 to-brand-900/30 hover:from-brand-900/50 hover:to-brand-900/40 transition-all shadow-lg shadow-brand-900/10 group"
+      >
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-brand-500 to-indigo-600 text-white flex items-center justify-center shadow-glow-brand shrink-0">
+              <Smartphone className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-white group-hover:text-brand-200 transition-colors">
+                Download GATE Prep Android App
+              </h3>
+              <p className="text-[10px] text-slate-400">
+                APK v1.0.14 · Direct download · No Play Store required · Native notifications included
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-[10px] px-2.5 py-1 rounded-full bg-brand-600 text-white font-bold shadow-md shadow-brand-900/30">
+              APK
+            </span>
+            <span className="text-[10px] font-semibold text-brand-300 flex items-center gap-1 group-hover:text-brand-200">
+              Download <ArrowUpRight className="w-3 h-3" />
+            </span>
+          </div>
+        </div>
+      </a>
 
       {/* TOP DUAL PROGRESS BARS (Initial Coverage & Revision) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
@@ -448,20 +483,6 @@ export default function ChecklistHubPage({ onEditBranch }: ChecklistHubPageProps
                       <span className="hidden sm:inline">Topic</span>
                     </button>
 
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (confirm(`Delete subject "${subject.name}" and all its topics?`)) {
-                          actions.deleteSubject(subject.id);
-                        }
-                      }}
-                      className="p-1.5 rounded-lg hover:bg-rose-500/20 text-slate-500 hover:text-rose-300 transition-colors"
-                      title="Delete Subject"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-
                     <div className="text-slate-400">
                       {isSubExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
                     </div>
@@ -520,11 +541,11 @@ export default function ChecklistHubPage({ onEditBranch }: ChecklistHubPageProps
                               }
                               className="px-3.5 py-2.5 flex items-center justify-between cursor-pointer hover:bg-white/[0.02] transition-colors border-b border-white/[0.04]"
                             >
-                              <div className="flex items-center gap-2 min-w-0">
-                                <h4 className="text-xs sm:text-sm font-semibold text-slate-200 truncate">
+                              <div className="flex items-center gap-2 min-w-0 flex-wrap sm:flex-nowrap">
+                                <h4 className="text-xs sm:text-sm font-semibold text-slate-200 truncate max-w-[60vw] sm:max-w-none">
                                   {topic.name}
                                 </h4>
-                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-mono">
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-mono shrink-0">
                                   {topCovered}/{topTotal}
                                 </span>
                               </div>
@@ -548,19 +569,7 @@ export default function ChecklistHubPage({ onEditBranch }: ChecklistHubPageProps
                                   <span>Subtopic</span>
                                 </button>
 
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (confirm(`Delete topic "${topic.name}"?`)) {
-                                      actions.deleteTopic(subject.id, topic.id);
-                                    }
-                                  }}
-                                  className="p-1 rounded hover:bg-rose-500/20 text-slate-500 hover:text-rose-300 transition-colors"
-                                  title="Delete Topic"
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                </button>
+                                {/* Delete removed per system-wide management */}
 
                                 <div className="text-slate-400">
                                   {isTopExpanded ? (
@@ -683,12 +692,6 @@ function SubtopicChecklistItem({
     actions.resetRevisions(subjectId, topicId, subtopic.id);
   };
 
-  const handleDelete = () => {
-    if (confirm(`Delete subtopic "${subtopic.name}"?`)) {
-      actions.deleteSubtopic(subjectId, topicId, subtopic.id);
-    }
-  };
-
   const handleSaveNotes = () => {
     actions.updateSubtopic(subjectId, topicId, subtopic.id, { notes: notesText });
     setEditingNotes(false);
@@ -702,7 +705,7 @@ function SubtopicChecklistItem({
           : 'bg-slate-950/60 border-white/5 hover:border-white/10'
       }`}
     >
-      <div className="flex items-start justify-between gap-2.5">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2.5">
         {/* CHECKLIST 1: General Topic Covering Checkbox */}
         <div className="flex items-start gap-2.5 flex-1 min-w-0">
           <button
@@ -731,7 +734,7 @@ function SubtopicChecklistItem({
             </span>
 
             {/* Timestamps & status */}
-            <div className="flex items-center gap-2 mt-1 text-[10px] text-slate-500">
+            <div className="flex items-center gap-2 mt-1 text-[10px] text-slate-500 flex-wrap">
               {subtopic.covered && (
                 <span className="text-brand-400 font-semibold flex items-center gap-1">
                   <CheckCircle2 className="w-3 h-3" /> Initial Study Done
@@ -758,10 +761,10 @@ function SubtopicChecklistItem({
         </div>
 
         {/* CHECKLIST 2: Multi-Round Revision Checklist & Controls */}
-        <div className="flex items-center gap-1.5 shrink-0">
-          {/* Multi-round revision badges (R1, R2, R3) */}
-          <div className="flex items-center gap-1 bg-slate-950/80 px-2 py-1 rounded-xl border border-white/5">
-            <span className="text-[9px] uppercase font-bold text-slate-400 mr-0.5">Rev</span>
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 sm:mt-0 mt-1">
+          {/* Multi-round revision badges (REV, R1, R2, R3) - responsive, wraps on small screens */}
+          <div className="flex flex-wrap items-center gap-1 bg-slate-950/80 px-2 py-1 rounded-xl border border-white/5">
+            <span className="text-[9px] uppercase font-bold text-slate-400 mr-0.5">REV</span>
             {[1, 2, 3].map((roundNum) => {
               const isDone = (subtopic.revisionRounds || 0) >= roundNum;
               return (
@@ -812,15 +815,6 @@ function SubtopicChecklistItem({
             title="Add/Edit Notes"
           >
             <Edit3 className="w-3 h-3" />
-          </button>
-
-          <button
-            type="button"
-            onClick={handleDelete}
-            className="p-1 rounded-lg hover:bg-rose-500/20 text-slate-500 hover:text-rose-300 transition-colors"
-            title="Delete Subtopic"
-          >
-            <Trash2 className="w-3 h-3" />
           </button>
         </div>
       </div>

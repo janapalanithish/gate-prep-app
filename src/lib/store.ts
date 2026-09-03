@@ -283,6 +283,28 @@ class GatePrepStore {
       this.actions.updateStreak(log.date);
     },
 
+    // Increment Pomodoro session count for a specific date
+    incrementPomodoroSession: (date: string) => {
+      this.setState((prev) => {
+        const existingLog = prev.dailyLogs[date];
+        if (!existingLog) {
+          return prev;
+        }
+        return {
+          ...prev,
+          dailyLogs: {
+            ...prev.dailyLogs,
+            [date]: {
+              ...existingLog,
+              pomodoroSessions: (existingLog.pomodoroSessions || 0) + 1,
+              updatedAt: new Date().toISOString(),
+            },
+          },
+        };
+      });
+      this.actions.updateStreak(date);
+    },
+
     deleteDailyLog: (date: string) => {
       this.setState((prev) => {
         const logs = { ...prev.dailyLogs };
@@ -319,7 +341,7 @@ class GatePrepStore {
             totalActiveDays: current.totalActiveDays + 1,
             activityHistory: {
               ...current.activityHistory,
-              [today]: { active: true, minutes: 0, tasksDone: 0 },
+              [today]: { active: true, minutes: 0, tasksDone: 0, pomodoroSessions: 0 },
             },
           },
         };

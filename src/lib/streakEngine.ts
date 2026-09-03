@@ -48,17 +48,19 @@ export function formatReadableDate(key: string): string {
 /**
  * Checks if a specific date has study activity
  */
-export function isDateActive(dateKey: string, appData: AppData): { active: boolean; minutes: number; tasksDone: number } {
+export function isDateActive(dateKey: string, appData: AppData): { active: boolean; minutes: number; tasksDone: number; pomodoroSessions: number } {
   // Check daily logs
   const log = appData.dailyLogs?.[dateKey];
   let minutes = 0;
   let tasksDone = 0;
+  let pomodoroSessions = 0;
   let hasActivity = false;
 
   if (log) {
     minutes = log.totalStudyMinutes || 0;
     tasksDone = (log.tasks || []).filter((t) => t.completed).length;
-    if (log.completed || minutes > 0 || tasksDone > 0 || (log.goals && log.goals.trim().length > 0)) {
+    pomodoroSessions = log.pomodoroSessions || 0;
+    if (log.completed || minutes > 0 || tasksDone > 0 || pomodoroSessions > 0 || (log.goals && log.goals.trim().length > 0)) {
       hasActivity = true;
     }
   }
@@ -104,6 +106,7 @@ export function isDateActive(dateKey: string, appData: AppData): { active: boole
     active: hasActivity,
     minutes,
     tasksDone,
+    pomodoroSessions,
   };
 }
 
@@ -198,6 +201,8 @@ export function calculateStreakStats(appData: AppData): StreakInfo {
 
 /**
  * Generate 12-week (84 days) calendar heatmap matrix
+ * Intensity is based on activity points: 1 point per completed task + 1 point per completed Pomodoro session
+ * Tile colors darken based on total points (0-4 intensity levels)
  */
 export interface HeatmapDay {
   dateKey: string;
@@ -205,9 +210,10 @@ export interface HeatmapDay {
   monthName: string;
   weekday: number; // 0: Sun, 1: Mon ...
   active: boolean;
-  intensity: number; // 0 to 4
+  intensity: number; // 0 to 4 - darkens based on total activity points
   minutes: number;
   tasksDone: number;
+  pomodoroSessions: number;
   isToday: boolean;
 }
 
@@ -225,12 +231,15 @@ export function generateHeatmapGrid(appData: AppData, weeksCount = 12): HeatmapD
     const dKey = formatDateKey(d);
     const stats = isDateActive(dKey, appData);
 
+    // Calculate activity points: 1 point per completed task + 1 point per completed Pomodoro session
+    let activityPoints = (stats.tasksDone || 0) + (stats.pomodoroSessions || 0 || 0);
+
     let intensity = 0;
     if (stats.active) {
-      if (stats.minutes >= 240 || stats.tasksDone >= 5) intensity = 4;
-      else if (stats.minutes >= 120 || stats.tasksDone >= 3) intensity = 3;
-      else if (stats.minutes >= 60 || stats.tasksDone >= 2) intensity = 2;
-      else intensity = 1;
+      if (activityPoints >= 8) intensity = 4;
+      else if (activityPoints >= 5) intensity = 3;
+      else if (activityPoints >= 3) intensity = 2;
+      else if (activityPoints >= 1) intensity = 1;
     }
 
     days.push({
@@ -242,6 +251,7 @@ export function generateHeatmapGrid(appData: AppData, weeksCount = 12): HeatmapD
       intensity,
       minutes: stats.minutes,
       tasksDone: stats.tasksDone,
+      pomodoroSessions: stats.pomodoroSessions || 0,
       isToday: dKey === todayKey,
     });
   }

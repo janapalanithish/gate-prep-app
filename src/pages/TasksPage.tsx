@@ -1,3 +1,8 @@
+/**
+ * Dedicated Tasks & Schedule Page
+ * High-impact UI for task management
+ */
+
 import { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Calendar,
@@ -10,24 +15,21 @@ import {
   Bell,
   Clock as ClockIcon,
   X,
-  AlertCircle,
   CalendarPlus,
+  Target,
+  Sparkles,
 } from 'lucide-react';
 import { useStore, useActions } from '../lib/store';
 import { DailyLog, DailyTaskItem } from '../lib/types';
+import { formatDateKey, formatReadableDate, subDays, addDays } from '../lib/streakEngine';
 import {
-  formatDateKey,
-  formatReadableDate,
-  subDays,
-  addDays,
-  generateHeatmapGrid,
-} from '../lib/streakEngine';
-import PomodoroTimer from '../components/PomodoroTimer';
-import { fireCelebrationConfetti } from '../lib/confetti';
+  initializeNotifications,
+  scheduleTaskStartReminder,
+  scheduleTaskEndReminder,
+  cancelNotification,
+  showImmediateNotification,
+} from '../lib/notificationService';
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
 type ReminderOption =
   | 'at_start'
   | '5min'
@@ -54,41 +56,19 @@ const REMINDER_OFFSET_MS: Record<ReminderOption, number> = {
   '1day': 24 * 60 * 60 * 1000,
 };
 
-// ---------------------------------------------------------------------------
-// Notification Helper
-// ---------------------------------------------------------------------------
-function scheduleBrowserNotification(title: string, body: string, delayMs: number) {
-  if (!('Notification' in window)) return;
-  if (Notification.permission !== 'granted') {
-    Notification.requestPermission().then((perm) => {
-      if (perm === 'granted') doSchedule();
-    });
-    return;
-  }
-  doSchedule();
-
-  function doSchedule() {
-    setTimeout(() => {
-      new Notification(title, { body, icon: '🎓' });
-    }, Math.max(0, delayMs));
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Main Component
-// ---------------------------------------------------------------------------
-export default function DailyActivityPage() {
+export default function TasksPage() {
   const appData = useStore();
   const actions = useActions();
 
   const todayKey = formatDateKey(new Date());
   const [selectedDate, setSelectedDate] = useState(todayKey);
 
-  // ---- Section 1 shared ----
-  const heatmapDays = useMemo(() => generateHeatmapGrid(appData, 14), [appData]);
-  const [pomodoroMinutes, setPomodoroMinutes] = useState(0);
+  // Initialize notifications on mount
+  useEffect(() => {
+    initializeNotifications().catch(console.error);
+  }, []);
 
-  // ---- Section 2 shared ----
+  // ---- Section: Current Log ----
   const currentLog: DailyLog = useMemo(() => {
     const existing = appData.dailyLogs?.[selectedDate];
     if (existing) return existing;
@@ -111,17 +91,12 @@ export default function DailyActivityPage() {
 
   const completedCount = (currentLog.tasks || []).filter((t) => t.completed).length;
   const totalTasksCount = (currentLog.tasks || []).length;
-  const totalActivityPoints =
-    completedCount +
-    (currentLog.pomodoroSessions || 0) +
-    Math.floor(pomodoroMinutes / 25);
   const isToday = selectedDate === todayKey;
 
   // Sync goals when date changes
   useEffect(() => {
     setGoalsInput(currentLog.goals || '');
     setIsEditingGoals(!currentLog.goals);
-    setPomodoroMinutes(0);
   }, [selectedDate, currentLog.goals]);
 
   // ---- Date navigation ----
@@ -140,20 +115,6 @@ export default function DailyActivityPage() {
     setIsEditingGoals(false);
   };
 
-  // ---- Pomodoro ----
-  const handlePomodoroComplete = (minutes: number) => {
-    const updatedLog: DailyLog = {
-      ...currentLog,
-      totalStudyMinutes: (currentLog.totalStudyMinutes || 0) + minutes,
-      completed: true,
-      pomodoroSessions: (currentLog.pomodoroSessions || 0) + 1,
-      updatedAt: new Date().toISOString(),
-    };
-    actions.addOrUpdateDailyLog(updatedLog);
-    setPomodoroMinutes((m) => m + minutes);
-    fireCelebrationConfetti();
-  };
-
   // ---- Task Manager State ----
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [snoozeModal, setSnoozeModal] = useState<{ taskId: string; title: string } | null>(null);
@@ -167,50 +128,8 @@ export default function DailyActivityPage() {
   const [taskEndTime, setTaskEndTime] = useState('');
   const [taskReminder, setTaskReminder] = useState<ReminderOption | ''>('');
 
-  // End-time notification timer refs
-  const endTimeTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
-
-  // Schedule end-time completion check
-  useEffect(() => {
-    // Clear old timers
-    endTimeTimers.current.forEach((t) => clearTimeout(t));
-    endTimeTimers.current.clear();
-
-    const now = new Date();
-    (currentLog.tasks || []).forEach((task) => {
-      if (task.completed || !task.startTime) return;
-
-      const [h, m] = task.startTime.split(':').map(Number);
-      const [eh, em] = (task.endTime || task.startTime).split(':').map(Number);
-      const target = new Date(now);
-      target.setHours(eh, em, 0, 0);
-
-      // If end time already passed today, skip
-      if (target.getTime() <= now.getTime()) return;
-
-      const delay = target.getTime() - now.getTime();
-      const tid = setTimeout(() => {
-        fireEndTimePrompt(task.id, task.title);
-      }, delay);
-      endTimeTimers.current.set(task.id, tid);
-    });
-
-    return () => {
-      endTimeTimers.current.forEach((t) => clearTimeout(t));
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentLog.tasks]);
-
-  const fireEndTimePrompt = (taskId: string, taskTitle: string) => {
-    scheduleBrowserNotification(
-      `⏰ Time's up!`,
-      `Did you complete "${taskTitle}"?`,
-      0
-    );
-  };
-
   // ---- Add Task ----
-  const handleAddTask = (e: React.FormEvent) => {
+  const handleAddTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!taskTitle.trim()) return;
 
@@ -231,28 +150,45 @@ export default function DailyActivityPage() {
     };
     actions.addOrUpdateDailyLog(updatedLog);
 
-    // Schedule notifications
+    // Request notification permission & schedule
+    await initializeNotifications();
+
     const now = new Date();
     if (taskStartTime) {
       const [sh, sm] = taskStartTime.split(':').map(Number);
       const startTarget = new Date(now);
       startTarget.setHours(sh, sm, 0, 0);
-      if (taskReminder) {
-        const reminderDelay =
-          startTarget.getTime() - now.getTime() - REMINDER_OFFSET_MS[taskReminder];
-        if (reminderDelay > 0) {
-          scheduleBrowserNotification(
+
+      if (taskReminder && taskReminder !== 'at_start') {
+        const reminderOffset = REMINDER_OFFSET_MS[taskReminder];
+        const reminderTime = new Date(startTarget.getTime() - reminderOffset);
+        if (reminderTime > now) {
+          showImmediateNotification(
             `⏰ Reminder: ${taskTitle}`,
-            REMINDER_LABELS[taskReminder] + ' — ' + taskTitle,
-            reminderDelay
+            REMINDER_LABELS[taskReminder] + ' — ' + taskTitle
           );
         }
       }
-      if (startTarget.getTime() > now.getTime()) {
-        scheduleBrowserNotification(
-          `🎯 Task Starting: ${taskTitle}`,
-          taskDescription ? `${taskDescription.substring(0, 80)}...` : 'Your task is starting now!',
-          startTarget.getTime() - now.getTime()
+
+      if (startTarget > now) {
+        await scheduleTaskStartReminder(
+          newTask.id,
+          taskTitle,
+          startTarget
+        );
+      }
+    }
+
+    if (taskEndTime) {
+      const [eh, em] = taskEndTime.split(':').map(Number);
+      const endTarget = new Date(now);
+      endTarget.setHours(eh, em, 0, 0);
+
+      if (endTarget > now) {
+        await scheduleTaskEndReminder(
+          newTask.id,
+          taskTitle,
+          endTarget
         );
       }
     }
@@ -268,19 +204,11 @@ export default function DailyActivityPage() {
   };
 
   // ---- Toggle Task ----
-  const handleToggleTask = (taskId: string) => {
+  const handleToggleTask = async (taskId: string) => {
+    const task = (currentLog.tasks || []).find((t) => t.id === taskId);
     const updatedTasks = (currentLog.tasks || []).map((t) => {
       if (t.id === taskId) {
         const next = !t.completed;
-        if (next) {
-          fireCelebrationConfetti();
-          // Clear any pending end-time timer
-          const tid = endTimeTimers.current.get(taskId);
-          if (tid) {
-            clearTimeout(tid);
-            endTimeTimers.current.delete(taskId);
-          }
-        }
         return { ...t, completed: next, completedAt: next ? new Date().toISOString() : undefined };
       }
       return t;
@@ -293,12 +221,22 @@ export default function DailyActivityPage() {
       updatedAt: new Date().toISOString(),
     };
     actions.addOrUpdateDailyLog(updatedLog);
+
+    // If task marked complete, cancel any pending end-time notifications
+    if (task && task.completed === false) {
+      await cancelNotification(`start_${taskId}`);
+      await cancelNotification(`end_${taskId}`);
+    }
   };
 
   // ---- Snooze / Postpone ----
-  const handleSnoozeTask = (targetDate: string) => {
+  const handleSnoozeTask = async (targetDate: string) => {
     if (!snoozeModal) return;
     const { taskId, title } = snoozeModal;
+
+    // Cancel existing notifications
+    await cancelNotification(`start_${taskId}`);
+    await cancelNotification(`end_${taskId}`);
 
     // Remove from current day's tasks
     const updatedTasks = (currentLog.tasks || []).filter((t) => t.id !== taskId);
@@ -322,12 +260,15 @@ export default function DailyActivityPage() {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
+    const originalTask = currentLog.tasks.find((t) => t.id === taskId);
     const migratedTask: DailyTaskItem = {
       id: `task_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       title,
       completed: false,
-      subjectName: currentLog.tasks.find((t) => t.id === taskId)?.subjectName,
-      description: currentLog.tasks.find((t) => t.id === taskId)?.description,
+      subjectName: originalTask?.subjectName,
+      description: originalTask?.description,
+      startTime: originalTask?.startTime,
+      endTime: originalTask?.endTime,
     };
     const migratedLog: DailyLog = {
       ...targetLog,
@@ -336,135 +277,45 @@ export default function DailyActivityPage() {
     };
     actions.addOrUpdateDailyLog(migratedLog);
     setSnoozeModal(null);
-    scheduleBrowserNotification(
-      `📋 Task Postponed`,
-      `"${title}" moved to ${formatReadableDate(targetDate)}`,
-      0
+
+    showImmediateNotification(
+      '📋 Task Postponed',
+      `"${title}" moved to ${formatReadableDate(targetDate)}`
     );
   };
 
+  const completionPercentage = totalTasksCount > 0
+    ? Math.round((completedCount / totalTasksCount) * 100)
+    : 0;
+
   return (
     <div className="space-y-5 animate-fade-in">
-
       {/* ================================================================
-          SECTION 1: Daily Activity & Focus
+          HEADER: Date Navigator & Today's Core Goal
       ================================================================ */}
-      <div className="space-y-4">
+      <div className="space-y-3">
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center">
-            <Zap className="w-4 h-4" />
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-500 to-indigo-600 text-white flex items-center justify-center shadow-glow-brand">
+            <Target className="w-4 h-4" />
           </div>
-          <h2 className="text-sm font-bold text-white uppercase tracking-wider">Daily Activity &amp; Focus</h2>
-        </div>
-
-        {/* Activity Heatmap */}
-        <div className="glass-card rounded-2xl p-4 border border-white/5 space-y-2.5">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-              <Calendar className="w-3.5 h-3.5 text-amber-400" />
-              Consistency Heatmap (Last 14 Weeks)
-            </h3>
-            <div className="flex items-center gap-3 flex-wrap">
-              <span className="text-[10px] text-slate-400">
-                {totalActivityPoints} activity pts
-              </span>
-              <span className="text-[10px] text-slate-400">
-                {heatmapDays.filter((d) => d.active).length} Active Days
-              </span>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto pb-1">
-            <div className="grid grid-flow-col grid-rows-7 gap-1 min-w-[320px]">
-              {heatmapDays.map((day) => {
-                const isCurrent = day.dateKey === selectedDate;
-                return (
-                  <button
-                    key={day.dateKey}
-                    onClick={() => setSelectedDate(day.dateKey)}
-                    className={`w-3.5 h-3.5 rounded-sm transition-transform hover:scale-125 relative ${
-                      isCurrent ? 'ring-2 ring-white z-10' : ''
-                    } ${
-                      day.intensity === 4
-                        ? 'bg-emerald-400 shadow-glow-emerald'
-                        : day.intensity === 3
-                        ? 'bg-emerald-500'
-                        : day.intensity === 2
-                        ? 'bg-emerald-600/80'
-                        : day.intensity === 1
-                        ? 'bg-emerald-800/60'
-                        : 'bg-slate-900 border border-white/[0.03]'
-                    }`}
-                    title={`${day.dateKey}: ${
-                      day.active
-                        ? `${day.tasksDone} tasks + ${day.pomodoroSessions || 0} pomodoros`
-                        : 'No activity'
-                    }`}
-                  />
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-white/5">
-            <span className="flex items-center gap-1.5">
-              <span className="text-slate-500">0 pts</span>
-              <span className="text-slate-400">= Low</span>
-            </span>
-            <div className="flex items-center gap-1">
-              <div className="w-2.5 h-2.5 rounded-sm bg-slate-900 border border-white/10" />
-              <div className="w-2.5 h-2.5 rounded-sm bg-emerald-800/60" />
-              <div className="w-2.5 h-2.5 rounded-sm bg-emerald-600" />
-              <div className="w-2.5 h-2.5 rounded-sm bg-emerald-500" />
-              <div className="w-2.5 h-2.5 rounded-sm bg-emerald-400" />
-            </div>
-            <span className="flex items-center gap-1.5">
-              <span className="text-slate-400">High = </span>
-              <span className="text-slate-500">8+ pts</span>
-            </span>
+          <div>
+            <h2 className="text-base font-bold text-white tracking-tight">Tasks &amp; Schedule</h2>
+            <p className="text-[10px] text-slate-400">Plan your study goals & track daily tasks</p>
           </div>
         </div>
 
-        {/* Focus Study Timer */}
-        <PomodoroTimer onSessionComplete={handlePomodoroComplete} />
-      </div>
-
-      {/* ================================================================
-          SECTION 2: Tasks & Schedule Manager
-      ================================================================ */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-brand-500/20 text-brand-400 flex items-center justify-center">
-              <CheckCircle2 className="w-4 h-4" />
-            </div>
-            <h2 className="text-sm font-bold text-white uppercase tracking-wider">Tasks &amp; Schedule</h2>
-          </div>
-
-          {/* TickTick-style + Add Task button */}
-          <button
-            onClick={() => setShowTaskModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold shadow-md shadow-brand-900/30 transition-colors active:scale-95"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            Add Task
-          </button>
-        </div>
-
-        {/* Tasks Card */}
-        <div className="glass-card rounded-2xl p-4 sm:p-5 border border-white/10 space-y-4">
-
-          {/* Date Navigation */}
-          <div className="flex items-center justify-between bg-slate-950/60 p-2.5 rounded-2xl border border-white/5">
+        {/* Date Navigator */}
+        <div className="glass-card rounded-2xl p-3 border border-white/5">
+          <div className="flex items-center justify-between bg-slate-950/60 p-2 rounded-xl border border-white/5">
             <button
               onClick={goToPrevDay}
-              className="p-1.5 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+              className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
               title="Previous Day"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
 
-            <div className="text-center">
+            <div className="text-center flex-1">
               <div className="flex items-center justify-center gap-2">
                 <h3 className="text-sm font-bold text-white">
                   {formatReadableDate(selectedDate)}
@@ -475,8 +326,9 @@ export default function DailyActivityPage() {
                   </span>
                 )}
               </div>
-              <p className="text-[11px] text-slate-400">
-                {completedCount}/{totalTasksCount} tasks &bull; {(currentLog.pomodoroSessions || 0) + Math.floor(pomodoroMinutes / 25)} focus sessions &bull; {currentLog.totalStudyMinutes} min
+              <p className="text-[10px] text-slate-400">
+                {completedCount}/{totalTasksCount} tasks completed
+                {totalTasksCount > 0 && ` • ${completionPercentage}% done`}
               </p>
             </div>
 
@@ -484,34 +336,37 @@ export default function DailyActivityPage() {
               {!isToday && (
                 <button
                   onClick={goToToday}
-                  className="px-2.5 py-1 rounded-xl bg-brand-600/30 text-brand-300 text-[10px] font-semibold hover:bg-brand-600/50 transition-colors"
+                  className="px-2.5 py-1 rounded-lg bg-brand-600/30 text-brand-300 text-[10px] font-semibold hover:bg-brand-600/50 transition-colors"
                 >
-                  Jump to Today
+                  Today
                 </button>
               )}
               <button
                 onClick={goToNextDay}
-                className="p-1.5 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+                className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
                 title="Next Day"
               >
                 <ChevronRight className="w-4 h-4" />
               </button>
             </div>
           </div>
+        </div>
 
-          {/* Day's Core Goal */}
-          <div className="bg-slate-950/40 rounded-2xl p-3 border border-white/5">
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-[11px] font-bold uppercase tracking-wider text-brand-300 flex items-center gap-1.5">
+        {/* Today's Core Goal / Milestone Card */}
+        <div className="glass-card rounded-2xl p-4 border border-brand-500/30 bg-gradient-to-br from-slate-900/90 via-indigo-950/30 to-slate-900/90 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-brand-500/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="relative z-10">
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-brand-300 flex items-center gap-1.5">
                 <Zap className="w-3.5 h-3.5" />
-                Day&apos;s Core Goal / Milestone
+                {isToday ? "Today's Core Goal" : 'Day\'s Milestone'}
               </label>
               {!isEditingGoals && currentLog.goals && (
                 <button
                   onClick={() => setIsEditingGoals(true)}
-                  className="text-[10px] text-slate-400 hover:text-brand-300"
+                  className="text-[10px] text-slate-400 hover:text-brand-300 font-semibold"
                 >
-                  Edit Goal
+                  Edit
                 </button>
               )}
             </div>
@@ -539,93 +394,139 @@ export default function DailyActivityPage() {
                 </div>
               </div>
             ) : (
-              <p className="text-xs text-slate-200 italic">
+              <p className="text-xs sm:text-sm text-slate-200 italic font-medium">
                 &ldquo;{currentLog.goals || 'No specific goal set for this day.'}&rdquo;
               </p>
             )}
           </div>
-
-          {/* Task List */}
-          <div className="space-y-2">
-            {(!currentLog.tasks || currentLog.tasks.length === 0) ? (
-              <div className="text-center py-6 text-xs text-slate-500">
-                No tasks for {formatReadableDate(selectedDate)}. Tap &ldquo;+ Add Task&rdquo; above.
-              </div>
-            ) : (
-              currentLog.tasks.map((task) => (
-                <div
-                  key={task.id}
-                  className={`p-3 rounded-xl border flex items-start justify-between gap-3 transition-all ${
-                    task.completed
-                      ? 'bg-emerald-950/30 border-emerald-500/30'
-                      : 'bg-slate-950/50 border-white/5 hover:border-white/10'
-                  }`}
-                >
-                  <div className="flex items-start gap-3 flex-1 min-w-0">
-                    <button
-                      type="button"
-                      onClick={() => handleToggleTask(task.id)}
-                      className={`mt-0.5 w-5 h-5 rounded-lg border flex items-center justify-center transition-colors shrink-0 ${
-                        task.completed
-                          ? 'bg-emerald-500 border-emerald-400 text-slate-950'
-                          : 'border-slate-600 hover:border-brand-400 text-transparent'
-                      }`}
-                    >
-                      <CheckCircle2 className="w-3.5 h-3.5 fill-current" />
-                    </button>
-
-                    <div className="flex-1 min-w-0">
-                      <span
-                        onClick={() => handleToggleTask(task.id)}
-                        className={`text-xs font-medium cursor-pointer select-none block leading-tight ${
-                          task.completed
-                            ? 'line-through text-slate-400 font-normal'
-                            : 'text-white'
-                        }`}
-                      >
-                        {task.title}
-                      </span>
-
-                      {task.description && (
-                        <p className="text-[11px] text-slate-400 mt-0.5 truncate">
-                          {task.description}
-                        </p>
-                      )}
-
-                      <div className="flex items-center gap-2 mt-1 text-[10px] text-slate-400 flex-wrap">
-                        {task.subjectName && (
-                          <span className="px-1.5 py-0.5 rounded bg-slate-800 text-indigo-300 font-semibold">
-                            {task.subjectName}
-                          </span>
-                        )}
-                        {task.startTime && (
-                          <span className="flex items-center gap-1 text-slate-400">
-                            <ClockIcon className="w-3 h-3" />
-                            {task.startTime}
-                            {task.endTime && ` – ${task.endTime}`}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Snooze / Postpone button (only for incomplete tasks) */}
-                  {!task.completed && (
-                    <button
-                      type="button"
-                      onClick={() => setSnoozeModal({ taskId: task.id, title: task.title })}
-                      className="p-1.5 rounded-lg hover:bg-amber-500/20 text-slate-500 hover:text-amber-300 transition-colors shrink-0"
-                      title="Snooze / Postpone"
-                    >
-                      <CalendarPlus className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-              ))
-            )}
-          </div>
         </div>
       </div>
+
+      {/* ================================================================
+          PROMINENT + ADD TASK FAB
+      ================================================================ */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 rounded-lg bg-brand-500/20 text-brand-400 flex items-center justify-center">
+            <CheckCircle2 className="w-4 h-4" />
+          </div>
+          <h3 className="text-sm font-bold text-white uppercase tracking-wider">Today's Tasks</h3>
+        </div>
+
+        <button
+          onClick={() => setShowTaskModal(true)}
+          className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-brand-900/30 transition-all active:scale-95"
+        >
+          <Plus className="w-4 h-4" />
+          Add Task
+        </button>
+      </div>
+
+      {/* ================================================================
+          INTERACTIVE TASK CARDS
+      ================================================================ */}
+      <div className="space-y-2.5">
+        {(!currentLog.tasks || currentLog.tasks.length === 0) ? (
+          <div className="glass-card rounded-2xl p-8 text-center border border-white/5">
+            <Calendar className="w-10 h-10 text-slate-500 mx-auto mb-2" />
+            <h4 className="text-sm font-bold text-white mb-1">No tasks yet</h4>
+            <p className="text-xs text-slate-400 mb-4">
+              Add your first task for {formatReadableDate(selectedDate)} to get started.
+            </p>
+            <button
+              onClick={() => setShowTaskModal(true)}
+              className="px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold inline-flex items-center gap-1.5"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Create First Task
+            </button>
+          </div>
+        ) : (
+          currentLog.tasks.map((task) => (
+            <div
+              key={task.id}
+              className={`glass-card rounded-2xl p-3.5 border transition-all ${
+                task.completed
+                  ? 'bg-emerald-950/20 border-emerald-500/30 opacity-75'
+                  : 'border-white/10 hover:border-brand-500/30'
+              }`}
+            >
+              <div className="flex items-start gap-3">
+                {/* Checkbox */}
+                <button
+                  type="button"
+                  onClick={() => handleToggleTask(task.id)}
+                  className={`mt-0.5 w-5 h-5 rounded-lg border flex items-center justify-center transition-all shrink-0 ${
+                    task.completed
+                      ? 'bg-emerald-500 border-emerald-400 text-slate-950 shadow-glow-emerald'
+                      : 'border-slate-600 hover:border-brand-400 text-transparent'
+                  }`}
+                  title={task.completed ? 'Completed' : 'Mark as complete'}
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5 fill-current" />
+                </button>
+
+                {/* Task Details */}
+                <div className="flex-1 min-w-0">
+                  <span
+                    onClick={() => handleToggleTask(task.id)}
+                    className={`text-sm font-medium cursor-pointer select-none block leading-tight ${
+                      task.completed
+                        ? 'line-through text-slate-400 font-normal'
+                        : 'text-white'
+                    }`}
+                  >
+                    {task.title}
+                  </span>
+
+                  {task.description && (
+                    <p className="text-[11px] text-slate-400 mt-1 line-clamp-2">
+                      {task.description}
+                    </p>
+                  )}
+
+                  {/* Time & Subject Badges */}
+                  <div className="flex items-center gap-2 mt-2 flex-wrap">
+                    {task.subjectName && (
+                      <span className="px-2 py-0.5 rounded-md bg-indigo-500/20 text-indigo-300 text-[10px] font-semibold border border-indigo-500/30">
+                        {task.subjectName}
+                      </span>
+                    )}
+                    {task.startTime && (
+                      <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-800/80 text-slate-300 text-[10px] font-medium">
+                        <ClockIcon className="w-3 h-3" />
+                        {task.startTime}
+                        {task.endTime && ` – ${task.endTime}`}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Snooze / Postpone Button */}
+                {!task.completed && (
+                  <button
+                    type="button"
+                    onClick={() => setSnoozeModal({ taskId: task.id, title: task.title })}
+                    className="p-2 rounded-lg hover:bg-amber-500/20 text-slate-500 hover:text-amber-300 transition-colors shrink-0 border border-transparent hover:border-amber-500/30"
+                    title="Snooze / Postpone to another date"
+                  >
+                    <CalendarPlus className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Floating Add Task FAB (Mobile) */}
+      <button
+        onClick={() => setShowTaskModal(true)}
+        className="fixed bottom-6 right-6 z-40 sm:hidden w-14 h-14 rounded-full bg-gradient-to-br from-brand-500 to-indigo-600 hover:from-brand-400 hover:to-indigo-500 text-white shadow-2xl shadow-brand-900/50 flex items-center justify-center active:scale-95 transition-all"
+        aria-label="Add Task"
+      >
+        <Plus className="w-6 h-6" />
+      </button>
 
       {/* ================================================================
           TASK CREATION MODAL
@@ -635,7 +536,7 @@ export default function DailyActivityPage() {
           <div className="glass-panel rounded-3xl p-5 sm:p-6 w-full max-w-md border border-white/10 shadow-2xl animate-slide-up max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <Plus className="w-4 h-4 text-brand-400" />
+                <Sparkles className="w-4 h-4 text-brand-400" />
                 New Task
               </h3>
               <button
@@ -755,7 +656,7 @@ export default function DailyActivityPage() {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2.5 px-4 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold transition-colors shadow-md shadow-brand-900/30"
+                  className="flex-1 py-2.5 px-4 rounded-xl bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 text-white text-xs font-bold transition-colors shadow-md shadow-brand-900/30"
                 >
                   Create Task
                 </button>

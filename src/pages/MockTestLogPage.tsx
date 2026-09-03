@@ -2,7 +2,6 @@ import { useState, useMemo } from 'react';
 import {
   FileText,
   Plus,
-  Trash2,
   ChevronDown,
   ChevronUp,
   TrendingUp,
@@ -39,18 +38,18 @@ export default function MockTestLogPage() {
   const [expanded, setExpanded] = useState<ExpandedState>({});
   const [filterCategory, setFilterCategory] = useState<MockCategory | 'all'>('all');
 
-  // Form state
+  // Form state - use empty strings or undefined for numeric fields to avoid locked "0" defaults
   const [formData, setFormData] = useState({
     testName: '',
     category: 'full_mock' as MockCategory,
-    weekNumber: 1,
+    weekNumber: 1 as number | '',
     attemptDate: formatDateKey(new Date()),
     attempted: true,
-    marksScored: 0,
-    totalMarks: 100,
-    questionsAttempted: 0,
-    totalQuestions: 65,
-    incorrectQuestions: 0,
+    marksScored: '' as number | '',
+    totalMarks: '' as number | '',
+    questionsAttempted: '' as number | '',
+    totalQuestions: '' as number | '',
+    incorrectQuestions: '' as number | '',
     weakTopics: '',
     keyMistakes: '',
     improvementPlan: '',
@@ -99,31 +98,55 @@ export default function MockTestLogPage() {
     const { name, value, type } = e.target;
     setFormData((prev) => ({
       ...prev,
-      [name]: type === 'number' ? parseFloat(value) || 0 : value,
+      [name]: type === 'number' ? (value === '' ? '' : parseFloat(value)) : value,
     }));
+  };
+
+  const resetForm = () => {
+    setFormData({
+      testName: '',
+      category: 'full_mock',
+      weekNumber: 1 as number | '',
+      attemptDate: formatDateKey(new Date()),
+      attempted: true,
+      marksScored: '' as number | '',
+      totalMarks: '' as number | '',
+      questionsAttempted: '' as number | '',
+      totalQuestions: '' as number | '',
+      incorrectQuestions: '' as number | '',
+      weakTopics: '',
+      keyMistakes: '',
+      improvementPlan: '',
+      timeManagementNotes: '',
+    });
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const percentage = formData.totalMarks > 0
-      ? (formData.marksScored / formData.totalMarks) * 100
+    const totalMarksVal = formData.totalMarks === '' ? 0 : formData.totalMarks as number;
+    const marksScoredVal = formData.marksScored === '' ? 0 : formData.marksScored as number;
+    const questionsAttemptedVal = formData.questionsAttempted === '' ? 0 : formData.questionsAttempted as number;
+    const incorrectQuestionsVal = formData.incorrectQuestions === '' ? 0 : formData.incorrectQuestions as number;
+
+    const percentage = totalMarksVal > 0
+      ? (marksScoredVal / totalMarksVal) * 100
       : 0;
-    const accuracy = formData.questionsAttempted > 0
-      ? ((formData.questionsAttempted - formData.incorrectQuestions) / formData.questionsAttempted) * 100
+    const accuracy = questionsAttemptedVal > 0
+      ? ((questionsAttemptedVal - incorrectQuestionsVal) / questionsAttemptedVal) * 100
       : 0;
 
     const newRecord: MockTestRecord = {
       id: `mock_${Date.now()}`,
       testName: formData.testName,
       category: formData.category,
-      weekNumber: formData.weekNumber,
+      weekNumber: formData.weekNumber === '' ? 1 : formData.weekNumber,
       attemptDate: formData.attemptDate,
       attempted: formData.attempted,
-      marksScored: formData.marksScored,
-      totalMarks: formData.totalMarks,
-      questionsAttempted: formData.questionsAttempted,
-      totalQuestions: formData.totalQuestions,
-      incorrectQuestions: formData.incorrectQuestions,
+      marksScored: marksScoredVal,
+      totalMarks: totalMarksVal,
+      questionsAttempted: questionsAttemptedVal,
+      totalQuestions: formData.totalQuestions === '' ? 0 : formData.totalQuestions as number,
+      incorrectQuestions: incorrectQuestionsVal,
       percentage,
       accuracy,
       weakTopics: formData.weakTopics,
@@ -137,28 +160,7 @@ export default function MockTestLogPage() {
     actions.addMockTestRecord(newRecord);
     fireCelebrationConfetti();
     setShowAddForm(false);
-    setFormData({
-      testName: '',
-      category: 'full_mock',
-      weekNumber: 1,
-      attemptDate: formatDateKey(new Date()),
-      attempted: true,
-      marksScored: 0,
-      totalMarks: 100,
-      questionsAttempted: 0,
-      totalQuestions: 65,
-      incorrectQuestions: 0,
-      weakTopics: '',
-      keyMistakes: '',
-      improvementPlan: '',
-      timeManagementNotes: '',
-    });
-  };
-
-  const handleDelete = (id: string) => {
-    if (confirm('Delete this test record?')) {
-      actions.deleteMockTestRecord(id);
-    }
+    resetForm();
   };
 
   return (
@@ -529,13 +531,9 @@ export default function MockTestLogPage() {
                     )}
 
                     <div className="flex justify-end pt-2">
-                      <button
-                        onClick={() => handleDelete(record.id)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-medium transition-colors"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        Delete
-                      </button>
+                      <span className="text-[10px] text-slate-500 italic">
+                        Test records are managed system-wide
+                      </span>
                     </div>
                   </div>
                 )}
