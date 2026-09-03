@@ -24,6 +24,13 @@ import {
 } from '../lib/streakEngine';
 import PomodoroTimer from '../components/PomodoroTimer';
 import { fireCelebrationConfetti } from '../lib/confetti';
+import {
+  initializeNotifications,
+  scheduleTaskStartReminder,
+  scheduleTaskEndReminder,
+  cancelNotification,
+  showImmediateNotification,
+} from '../lib/notificationService';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -55,9 +62,9 @@ const REMINDER_OFFSET_MS: Record<ReminderOption, number> = {
 };
 
 // ---------------------------------------------------------------------------
-// Notification Helper
+// Notification Helper (uses Capacitor notificationService with web fallback)
 // ---------------------------------------------------------------------------
-function scheduleBrowserNotification(title: string, body: string, delayMs: number) {
+function scheduleWebNotification(title: string, body: string, delayMs: number) {
   if (!('Notification' in window)) return;
   if (Notification.permission !== 'granted') {
     Notification.requestPermission().then((perm) => {
@@ -202,7 +209,7 @@ export default function DailyActivityPage() {
   }, [currentLog.tasks]);
 
   const fireEndTimePrompt = (taskId: string, taskTitle: string) => {
-    scheduleBrowserNotification(
+    scheduleWebNotification(
       `⏰ Time's up!`,
       `Did you complete "${taskTitle}"?`,
       0
@@ -241,7 +248,7 @@ export default function DailyActivityPage() {
         const reminderDelay =
           startTarget.getTime() - now.getTime() - REMINDER_OFFSET_MS[taskReminder];
         if (reminderDelay > 0) {
-          scheduleBrowserNotification(
+          scheduleWebNotification(
             `⏰ Reminder: ${taskTitle}`,
             REMINDER_LABELS[taskReminder] + ' — ' + taskTitle,
             reminderDelay
@@ -249,7 +256,7 @@ export default function DailyActivityPage() {
         }
       }
       if (startTarget.getTime() > now.getTime()) {
-        scheduleBrowserNotification(
+        scheduleWebNotification(
           `🎯 Task Starting: ${taskTitle}`,
           taskDescription ? `${taskDescription.substring(0, 80)}...` : 'Your task is starting now!',
           startTarget.getTime() - now.getTime()
@@ -336,7 +343,7 @@ export default function DailyActivityPage() {
     };
     actions.addOrUpdateDailyLog(migratedLog);
     setSnoozeModal(null);
-    scheduleBrowserNotification(
+    scheduleWebNotification(
       `📋 Task Postponed`,
       `"${title}" moved to ${formatReadableDate(targetDate)}`,
       0

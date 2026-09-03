@@ -108,7 +108,7 @@ const SYLLABUS_CS: Subject[] = [
         'Boolean Identities & Canonical Forms',
         'Logic Gates & Universal Logic',
         'Karnaugh Maps (K-Maps) Minimization',
-        'Quine-McCluskey Method & Hazards',
+        'Tabular Minimization (Quine-McCluskey Method) & Hazards',
       ],
     },
     {
@@ -414,12 +414,12 @@ const SYLLABUS_CS: Subject[] = [
     {
       name: 'Network Layer',
       subtopics: [
-        'IPv4 & IPv6 Header Formats & Fragmentation',
-        'IPv4 Addressing: Classful & Classless (CIDR), Subnetting, Supernetting',
-        'NAT (Network Address Translation) & its Types',
+        'IPv4 Header Format, Fragmentation & Addressing',
+        'IPv4 Classless Inter-Domain Routing (CIDR), Subnetting & Supernetting',
+        'Network Address Translation (NAT) & its Types',
         'Routing Algorithms: Distance Vector (Bellman-Ford), Link State (Dijkstra)',
         'Routing Protocols: RIP, OSPF, BGP',
-        'DNS: Resolution, Records & Hierarchy',
+        'Domain Name System (DNS): Resolution, Records & Hierarchy',
       ],
     },
     {
@@ -433,7 +433,7 @@ const SYLLABUS_CS: Subject[] = [
     {
       name: 'Application Layer & Network Security',
       subtopics: [
-        'Protocols: DNS, HTTP / HTTPS (Request/Response, Methods, Headers, Cookies)',
+        'HTTP / HTTPS (Request/Response, Methods, Headers, Cookies)',
         'Cryptography: Symmetric vs Asymmetric (RSA, DES, AES)',
         'Digital Signatures, Certificates & Public Key Infrastructure',
         'Firewalls, Packet Filters & TLS/SSL',

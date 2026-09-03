@@ -3,19 +3,19 @@ import { AppData } from './lib/types';
 import { loadAppData, createDefaultAppData } from './lib/storage';
 import { useStore, useActions } from './lib/store';
 import { initializeNotifications } from './lib/notificationService';
+import { checkForUpdates, CURRENT_APP_VERSION } from './lib/versionCheck';
 
 import BranchSetupPage from './pages/BranchSetupPage';
 import ChecklistHubPage from './pages/ChecklistHubPage';
 import DailyActivityPage from './pages/DailyActivityPage';
 import DurationCalculatorPage from './pages/DurationCalculatorPage';
 import MockTestLogPage from './pages/MockTestLogPage';
-import TasksPage from './pages/TasksPage';
 import SettingsPage from './pages/SettingsPage';
 
 export default function App() {
   const [loaded, setLoaded] = useState(false);
   const [showBranchSetup, setShowBranchSetup] = useState(false);
-  const [activePage, setActivePage] = useState<'checklist' | 'tasks' | 'daily' | 'duration' | 'mocktest' | 'settings'>('checklist');
+  const [activePage, setActivePage] = useState<'checklist' | 'daily' | 'duration' | 'mocktest' | 'settings'>('checklist');
 
   const appData = useStore();
   const actions = useActions();
@@ -58,6 +58,27 @@ export default function App() {
     actions.selectBranch(branch, customName);
     setShowBranchSetup(false);
   };
+
+  const [updateBanner, setUpdateBanner] = useState<{
+    visible: boolean;
+    latest: string;
+    url: string | null;
+  } | null>(null);
+
+  // Check for app updates after load
+  useEffect(() => {
+    if (!loaded) return;
+    (async () => {
+      const result = await checkForUpdates();
+      if (result.hasUpdate && result.release) {
+        setUpdateBanner({
+          visible: true,
+          latest: result.release.tag_name || result.latestVersion,
+          url: result.downloadUrl,
+        });
+      }
+    })();
+  }, [loaded]);
 
   useEffect(() => {
     (async () => {
@@ -116,7 +137,6 @@ export default function App() {
           <nav className="hidden sm:flex items-center gap-1 bg-white/5 rounded-full px-1.5 py-1 border border-white/10">
             {[
               { id: 'checklist' as const, label: 'Checklists' },
-              { id: 'tasks' as const, label: 'Tasks' },
               { id: 'daily' as const, label: 'Daily' },
               { id: 'duration' as const, label: 'Duration' },
               { id: 'mocktest' as const, label: 'Mock Tests' },
@@ -168,6 +188,48 @@ export default function App() {
         </div>
       </header>
 
+      {/* In-app update banner */}
+      {updateBanner?.visible && (
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 mt-3 animate-fade-in">
+          <div className="relative glass-panel rounded-2xl p-3.5 border border-emerald-500/30 bg-gradient-to-r from-emerald-900/30 via-brand-900/30 to-emerald-900/30 shadow-lg shadow-emerald-900/20">
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-300 flex items-center justify-center shrink-0">
+                <span className="text-lg">⬆️</span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-white">
+                  A new version of GATE Prep is available!
+                </p>
+                <p className="text-[11px] text-emerald-200/80">
+                  {updateBanner.latest} is now available — install it for the latest features and fixes.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {updateBanner.url && (
+                  <a
+                    href={updateBanner.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-brand-600 hover:from-emerald-500 hover:to-brand-500 text-white text-xs font-bold shadow-md shadow-emerald-900/30 transition-colors inline-flex items-center gap-1.5"
+                  >
+                    <span>Update Now</span>
+                    <span aria-hidden>↗</span>
+                  </a>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setUpdateBanner((b) => (b ? { ...b, visible: false } : b))}
+                  className="px-2.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-semibold border border-white/10 transition-colors"
+                  aria-label="Dismiss update banner"
+                >
+                  Later
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 pb-24">
         {/* Page 1: Dual Progress Hub */}
         {activePage === 'checklist' && (
@@ -176,10 +238,7 @@ export default function App() {
           />
         )}
 
-        {/* Page 2: Tasks & Schedule */}
-        {activePage === 'tasks' && <TasksPage />}
-
-        {/* Page 3: Daily Activity */}
+        {/* Page 2: Daily Activity & Focus + Tasks & Schedule */}
         {activePage === 'daily' && <DailyActivityPage />}
 
         {/* Page 3: Duration Calculator */}

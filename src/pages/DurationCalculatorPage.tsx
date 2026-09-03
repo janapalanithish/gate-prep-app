@@ -4,7 +4,6 @@ import {
   Calendar,
   Clock,
   Plus,
-  Trash2,
   CheckCircle2,
   AlertCircle,
   TrendingUp,
@@ -476,7 +475,7 @@ export default function DurationCalculatorPage() {
                       </div>
                     </div>
 
-                    {/* Duration Badges & Delete */}
+                    {/* Duration Badges */}
                     <div className="flex items-center gap-3 self-end sm:self-center shrink-0">
                       <div className="text-right">
                         <span className="text-base font-black font-mono text-brand-400 block leading-none">
@@ -488,15 +487,6 @@ export default function DurationCalculatorPage() {
                           </span>
                         )}
                       </div>
-
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteRecord(record.id, record.subjectName)}
-                        className="p-2 rounded-xl hover:bg-rose-500/20 text-slate-500 hover:text-rose-300 transition-colors"
-                        title="Delete Record"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
                     </div>
                   </div>
                 </div>

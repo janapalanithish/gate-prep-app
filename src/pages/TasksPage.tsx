@@ -338,7 +338,7 @@ export default function TasksPage() {
                   onClick={goToToday}
                   className="px-2.5 py-1 rounded-lg bg-brand-600/30 text-brand-300 text-[10px] font-semibold hover:bg-brand-600/50 transition-colors"
                 >
-                  Today
+                  Jump to Today
                 </button>
               )}
               <button
