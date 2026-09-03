@@ -172,9 +172,12 @@ export default function ChecklistHubPage({ onEditBranch }: ChecklistHubPageProps
                 Active Branch
               </span>
             </div>
-            <p className="text-[11px] text-slate-400 block w-full mt-0.5 leading-snug flex flex-wrap gap-1" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+            <p className="text-[11px] text-slate-400 block w-full mt-0.5 leading-snug flex flex-wrap gap-1.5 max-w-full whitespace-normal">
               {currentBranchInfo.description.split(',').map((part, idx) => (
-                <span key={idx} className="px-1.5 py-0.5 rounded-md bg-white/5 text-slate-300 text-[10px] font-medium border border-white/5">
+                <span
+                  key={idx}
+                  className="inline-block px-1.5 py-0.5 rounded-md bg-white/5 text-slate-300 text-[10px] font-medium border border-white/5 whitespace-normal break-words"
+                >
                   {part.trim()}
                 </span>
               ))}

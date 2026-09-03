@@ -241,14 +241,14 @@ export function generateHeatmapGrid(appData: AppData, weeksCount = 12): HeatmapD
     // Activity points: 1 per completed task + 1 per completed Pomodoro session.
     const activityPoints = (stats.tasksDone || 0) + (stats.pomodoroSessions || 0);
 
-    // Map completion count to intensity shade.
-    // 1 completed task already produces a visible (light-green) cell.
+    // Map task completion count to intensity shade — GitHub-style green gradient.
+    // Per spec: 0 tasks = default dark gray, 1 task = light green, 2+ tasks = progressively darker green.
     let intensity = 0;
     if (stats.active || activityPoints > 0) {
-      if (activityPoints >= 6) intensity = 4;
-      else if (activityPoints >= 4) intensity = 3;
-      else if (activityPoints >= 2) intensity = 2;
-      else if (activityPoints >= 1) intensity = 1;
+      if (activityPoints >= 6) intensity = 4;      // deepest green (6+ tasks)
+      else if (activityPoints >= 4) intensity = 3; // strong green (4–5 tasks)
+      else if (activityPoints >= 2) intensity = 2; // medium green (2–3 tasks)
+      else if (activityPoints >= 1) intensity = 1; // light green (1 task)
     }
 
     days.push({

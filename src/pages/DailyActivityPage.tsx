@@ -273,11 +273,12 @@ export default function DailyActivityPage() {
     actions.addOrUpdateDailyLog(updatedLog);
 
     // Schedule start & end alarms using native notification engine.
+    // Per spec: schedule EXACT to the minute — zero out seconds and milliseconds.
     const now = new Date();
     if (taskStartTime) {
       const [sh, sm] = taskStartTime.split(':').map(Number);
       const startTarget = new Date(now);
-      startTarget.setHours(sh, sm, 0, 0);
+      startTarget.setHours(sh, sm, 0, 0); // exact to the minute
       if (startTarget.getTime() > now.getTime()) {
         scheduleTaskStartReminder(
           newTask.id,
@@ -290,7 +291,7 @@ export default function DailyActivityPage() {
     if (taskEndTime) {
       const [eh, em] = taskEndTime.split(':').map(Number);
       const endTarget = new Date(now);
-      endTarget.setHours(eh, em, 0, 0);
+      endTarget.setHours(eh, em, 0, 0); // exact to the minute
       // If end time already passed today, skip scheduling (task already done or overdue).
       if (endTarget.getTime() > now.getTime()) {
         scheduleTaskEndReminder(newTask.id, taskTitle.trim(), endTarget).catch(() => {});
@@ -308,7 +309,9 @@ export default function DailyActivityPage() {
   };
 
   // ---- Toggle Task ----
-  const handleToggleTask = (taskId: string) => {
+  const handleToggleTask = async (taskId: string) => {
+    const originalTask = (currentLog.tasks || []).find((t) => t.id === taskId);
+    const wasCompleted = originalTask?.completed || false;
     const updatedTasks = (currentLog.tasks || []).map((t) => {
       if (t.id === taskId) {
         const next = !t.completed;
@@ -333,6 +336,20 @@ export default function DailyActivityPage() {
       updatedAt: new Date().toISOString(),
     };
     actions.addOrUpdateDailyLog(updatedLog);
+
+    // If task is being marked complete (transition false -> true):
+    // 1. Sync streak activity for today
+    // 2. Cancel any pending start/end notifications for this task
+    if (!wasCompleted) {
+      // Cancel pending alarms
+      try {
+        await cancelTaskNotifications(taskId);
+      } catch {
+        // ignore
+      }
+      // Update streak — this recalculates activityHistory for today.
+      actions.updateStreak(todayKey);
+    }
   };
 
   // ---- Snooze / Postpone ----

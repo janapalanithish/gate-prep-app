@@ -1,17 +1,17 @@
 /**
- * Notification Service for GATE Prep App — FULL REBUILD v1.0.20
+ * Notification Service for GATE Prep App — v1.0.19
  * Guarantees system-level alerts on Android via:
  *   - Two dedicated notification channels (task-reminders, app-updates)
  *   - Explicit channel creation on every app startup
  *   - SCHEDULE_EXACT_ALARM + POST_NOTIFICATIONS permission flows
  *   - allowWhileIdle scheduling for Doze-mode reliability
  *
- * Notification contracts:
- *  - TASK START ALARM at task.startTime → "Task Started: {title}" + "Your study session..."
- *  - TASK END ALARM   at task.endTime   → "Task Completed? {title}" + "Did you complete...?"
+ * Notification contracts (per spec):
+ *  - TASK START ALARM at task.startTime → "Task Starting: {title}" + "Your scheduled task '[title]' is starting now!"
+ *  - TASK END ALARM   at task.endTime   → "Task Completed?" + "Did you finish '[title]'? Tap to mark completed or reschedule."
  *  - APP UPDATE      on version check   → "New GATE Prep Update Available!"
- *  - Tapping any notification deep-links into the Tasks & Schedule section with a
- *    [Mark Completed] / [Reschedule] modal prompt.
+ *  - Tapping the end-time notification opens the app directly to the active task,
+ *    prompting the user to either [Mark Completed] or [Reschedule].
  */
 import { LocalNotifications, PermissionStatus } from '@capacitor/local-notifications';
 import { App } from '@capacitor/app';
@@ -188,23 +188,20 @@ async function scheduleNotification(options: NotificationOptions): Promise<boole
 // 4. TASK REMINDER ALARMS
 // ---------------------------------------------------------------------------
 /**
- * TASK START ALARM
- * Fires at the exact task.startTime.
- * Title: "Task Started: {taskTitle}"
- * Body:  "Your study session for {subjectName} has officially started! Lock in."
+ * TASK START ALARM — fires at exact task.startTime.
+ * Per spec: Title "Task Starting: {taskTitle}"
+ *            Body  "Your scheduled task '[taskTitle]' is starting now!"
  */
 export async function scheduleTaskStartReminder(
-  taskId:       string,
-  taskTitle:    string,
-  startTime:    Date,
-  subjectName?: string,
+  taskId:    string,
+  taskTitle: string,
+  startTime: Date,
+  _subjectName?: string, // unused in new spec
 ): Promise<boolean> {
   return scheduleNotification({
     id:       `start_${taskId}`,
-    title:    `Task Started: ${taskTitle}`,
-    body:     subjectName
-      ? `Your study session for ${subjectName} has officially started! Lock in.`
-      : `Your study session has officially started! Lock in.`,
+    title:    `Task Starting: ${taskTitle}`,
+    body:     `Your scheduled task '${taskTitle}' is starting now!`,
     scheduleAt: startTime,
     channelId:  CHANNEL_TASK_REMINDERS,
     extraData:  { taskId, taskTitle, actionType: 'start' },
@@ -212,52 +209,28 @@ export async function scheduleTaskStartReminder(
 }
 
 /**
- * TASK END COMPLETION ALARM
- * Fires at the exact task.endTime.
- * Title: "Task Completed? {taskTitle}"
- * Body:  "Did you complete this task? Open app to confirm or reschedule for another day."
+ * TASK END COMPLETION ALARM — fires at exact task.endTime.
+ * Per spec: Title "Task Completed?"
+ *            Body  "Did you finish '[taskTitle]'? Tap to mark completed or reschedule."
+ * Tapping this notification opens the app with [Mark Completed] / [Reschedule] options.
  */
 export async function scheduleTaskEndReminder(
   taskId:    string,
   taskTitle: string,
   endTime:   Date,
 ): Promise<boolean> {
-  try {
-    const numId = typeof taskId === 'string'
-      ? parseInt(taskId.replace(/\D/g, ''), 10) || Date.now()
-      : taskId;
-
-    await LocalNotifications.schedule({
-      notifications: [{
-        id:        numId,
-        title:     `Task Completed? ${taskTitle}`,
-        body:      'Did you complete this task? Open app to confirm or reschedule for another day.',
-        channelId: CHANNEL_TASK_REMINDERS,
-        schedule: {
-          at:             new Date(endTime),
-          allowWhileIdle: true,
-        },
-        actionTypeId: 'TASK_END_REMINDER',
-        extra: {
-          taskId,
-          taskTitle,
-          actionType: 'end',
-          actionIds:    ['ACTION_COMPLETE', 'ACTION_POSTPONE'],
-          actionLabels: ['Complete', 'Reschedule'],
-        },
-      }],
-    });
-
-    console.log(
-      '[NotificationService] ✓ Scheduled end reminder for',
-      new Date(endTime).toLocaleString(),
-      '| task:', taskTitle,
-    );
-    return true;
-  } catch (e) {
-    console.error('[NotificationService] ✗ Failed to schedule end reminder:', e);
-    return false;
-  }
+  return scheduleNotification({
+    id:        `end_${taskId}`,
+    title:     'Task Completed?',
+    body:      `Did you finish '${taskTitle}'? Tap to mark completed or reschedule.`,
+    scheduleAt: new Date(endTime),
+    channelId:  CHANNEL_TASK_REMINDERS,
+    extraData:  {
+      taskId,
+      taskTitle,
+      actionType: 'end',
+    },
+  });
 }
 
 // ---------------------------------------------------------------------------

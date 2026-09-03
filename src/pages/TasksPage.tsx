@@ -158,7 +158,7 @@ export default function TasksPage() {
     if (taskStartTime) {
       const [sh, sm] = taskStartTime.split(':').map(Number);
       const startTarget = new Date(now);
-      startTarget.setHours(sh, sm, 0, 0);
+      startTarget.setHours(sh, sm, 0, 0); // exact to the minute
 
       if (taskReminder && taskReminder !== 'at_start') {
         const reminderOffset = REMINDER_OFFSET_MS[taskReminder];
@@ -183,7 +183,7 @@ export default function TasksPage() {
     if (taskEndTime) {
       const [eh, em] = taskEndTime.split(':').map(Number);
       const endTarget = new Date(now);
-      endTarget.setHours(eh, em, 0, 0);
+      endTarget.setHours(eh, em, 0, 0); // exact to the minute
 
       if (endTarget > now) {
         await scheduleTaskEndReminder(
