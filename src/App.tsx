@@ -84,13 +84,15 @@ export default function App() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  // Check for app updates after load — show banner AND fire a system notification
+  // Check for app updates after load — show banner AND fire a system notification.
+  // The notification fires only ONCE per release version (guarded by
+  // `lastNotifiedVersion` in @capacitor/preferences inside showAppUpdateNotification).
   useEffect(() => {
     if (!loaded) return;
     (async () => {
       const result = await checkForUpdates();
-      // Only show the banner when the latest GitHub release is strictly
-      // newer than what is currently installed.
+      // Only proceed when the latest GitHub release is strictly newer than
+      // what is currently installed.
       if (result.hasUpdate && result.release) {
         const latestTag = result.release.tag_name || result.latestVersion;
         setUpdateBanner({
@@ -100,9 +102,9 @@ export default function App() {
         });
         // Fire a system-level notification on the app-updates channel so the
         // user is alerted even when the in-app banner is dismissed.
-        if (isPermissionGranted()) {
-          showAppUpdateNotification(latestTag, result.downloadUrl || undefined).catch(() => {});
-        }
+        // showAppUpdateNotification ensures permissions/channels are ready and
+        // only fires once per release version (via @capacitor/preferences).
+        showAppUpdateNotification(latestTag, result.downloadUrl || undefined).catch(() => {});
       }
     })();
   }, [loaded]);

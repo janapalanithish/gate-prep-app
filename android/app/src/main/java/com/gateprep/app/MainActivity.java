@@ -47,20 +47,22 @@ public class MainActivity extends BridgeActivity {
      * This is the primary channel for task start/end alarms.
      */
     private void createTaskRemindersChannel() {
-        NotificationChannel channel = new NotificationChannel(
-            CHANNEL_TASK_REMINDERS,
-            "Task Reminders",
-            NotificationManager.IMPORTANCE_MAX   // importance=5 — top priority, sound + vibration
-        );
-        channel.setDescription("Task start & end time reminders for your study sessions");
-        channel.enableVibration(true);
-        channel.enableLights(true);
-        channel.setShowBadge(true);
-        channel.setLockscreenVisibility(NotificationCompat.VISIBILITY_PUBLIC);
-        NotificationManager notificationManager = getSystemService(NotificationManager.class);
-        if (notificationManager != null) {
-            notificationManager.createNotificationChannel(channel);
-            Log.d("[NotificationService]", "✓ Task Reminders channel created (task-reminders, IMPORTANCE_MAX)");
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(
+                CHANNEL_TASK_REMINDERS,
+                "Task Reminders",
+                NotificationManager.IMPORTANCE_HIGH
+            );
+            channel.setDescription("Task start & end time reminders for your study sessions");
+            channel.enableVibration(true);
+            channel.enableLights(true);
+            channel.setShowBadge(true);
+            channel.setLockscreenVisibility(NotificationCompat.VISIBILITY_PUBLIC);
+            NotificationManager notificationManager = getSystemService(NotificationManager.class);
+            if (notificationManager != null) {
+                notificationManager.createNotificationChannel(channel);
+                Log.d("[NotificationService]", "✓ Task Reminders channel created (task-reminders, IMPORTANCE_HIGH)");
+            }
         }
     }
 
@@ -69,20 +71,22 @@ public class MainActivity extends BridgeActivity {
      * Used for in-app update availability notifications.
      */
     private void createAppUpdatesChannel() {
-        NotificationChannel channel = new NotificationChannel(
-            CHANNEL_APP_UPDATES,
-            "App Updates",
-            NotificationManager.IMPORTANCE_HIGH  // importance=4 — prominent but below reminders
-        );
-        channel.setDescription("Alerts when a new version of GATE Prep is available");
-        channel.enableVibration(true);
-        channel.enableLights(true);
-        channel.setShowBadge(true);
-        channel.setLockscreenVisibility(NotificationCompat.VISIBILITY_PUBLIC);
-        NotificationManager notificationManager = getSystemService(NotificationManager.class);
-        if (notificationManager != null) {
-            notificationManager.createNotificationChannel(channel);
-            Log.d("[NotificationService]", "✓ App Updates channel created (app-updates, IMPORTANCE_HIGH)");
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(
+                CHANNEL_APP_UPDATES,
+                "App Updates",
+                NotificationManager.IMPORTANCE_HIGH
+            );
+            channel.setDescription("Alerts when a new version of GATE Prep is available");
+            channel.enableVibration(true);
+            channel.enableLights(true);
+            channel.setShowBadge(true);
+            channel.setLockscreenVisibility(NotificationCompat.VISIBILITY_PUBLIC);
+            NotificationManager notificationManager = getSystemService(NotificationManager.class);
+            if (notificationManager != null) {
+                notificationManager.createNotificationChannel(channel);
+                Log.d("[NotificationService]", "✓ App Updates channel created (app-updates, IMPORTANCE_HIGH)");
+            }
         }
     }
 

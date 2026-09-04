@@ -40,11 +40,26 @@ export function compareVersions(v1: string, v2: string): number {
 }
 
 /**
- * Get the current app version from package.json or hardcoded constant.
- * Update this whenever releasing a new version.
+ * Get the current app version from package.json (source of truth).
+ * Falls back to the constant below if the dynamic import fails.
  */
-export const CURRENT_APP_VERSION = '1.0.19';
+export const CURRENT_APP_VERSION = '1.0.21';
 const GITHUB_API_URL = 'https://api.github.com/repos/janapalanithish/gate-prep-app/releases/latest';
+
+/**
+ * Resolve the actually-installed app version at runtime.
+ * Prefers the compiled package.json (Capacitor bundles it in the webview),
+ * otherwise falls back to CURRENT_APP_VERSION.
+ */
+export async function getInstalledVersion(): Promise<string> {
+  try {
+    const pkg = await import('../../package.json', { with: { type: 'json' } });
+    if (pkg?.version) return String(pkg.version);
+  } catch {
+    // Fallback below
+  }
+  return CURRENT_APP_VERSION;
+}
 
 /**
  * Check for updates by fetching the latest GitHub release.

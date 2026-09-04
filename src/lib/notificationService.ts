@@ -1,5 +1,5 @@
 /**
- * Notification Service for GATE Prep App — v1.0.19
+ * Notification Service for GATE Prep App — v1.0.21
  * Guarantees system-level alerts on Android via:
  *   - Two dedicated notification channels (task-reminders, app-updates)
  *   - Explicit channel creation on every app startup
@@ -8,19 +8,23 @@
  *
  * Notification contracts (per spec):
  *  - TASK START ALARM at task.startTime → "Task Starting: {title}" + "Your scheduled task '[title]' is starting now!"
- *  - TASK END ALARM   at task.endTime   → "Task Completed?" + "Did you finish '[title]'? Tap to mark completed or reschedule."
- *  - APP UPDATE      on version check   → "New GATE Prep Update Available!"
+ *  - TASK END ALARM   at task.endTime   → "Task Completed?" + "Did you finish '[title]'? Tap to mark as completed or reschedule."
+ *  - APP UPDATE      on version check   → "New Version Available! 🚀" + "Version [NewTag] is now available. Tap here to download the latest APK update."
  *  - Tapping the end-time notification opens the app directly to the active task,
  *    prompting the user to either [Mark Completed] or [Reschedule].
  */
 import { LocalNotifications, PermissionStatus } from '@capacitor/local-notifications';
+import { Preferences } from '@capacitor/preferences';
 import { App } from '@capacitor/app';
 
 // ---------------------------------------------------------------------------
 // Channel IDs (must match Android channel IDs)
 // ---------------------------------------------------------------------------
-const CHANNEL_TASK_REMINDERS = 'task-reminders';
-const CHANNEL_APP_UPDATES    = 'app-updates';
+export const CHANNEL_TASK_REMINDERS = 'task-reminders';
+export const CHANNEL_APP_UPDATES    = 'app-updates';
+
+// Preferences key for version notifications
+export const PREF_LAST_NOTIFIED_VERSION = 'lastNotifiedVersion';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -42,14 +46,49 @@ export interface NotificationTapPayload {
   kind: NotificationTapKind;
   /** Set when user tapped a notification action button. */
   action?: 'complete' | 'postpone';
+  downloadUrl?: string;
+  latestVersion?: string;
 }
 
 // ---------------------------------------------------------------------------
-// Permission state
+// Permission & Channel state
 // ---------------------------------------------------------------------------
-let permissionChecked  = false;
-let permissionGranted  = false;
+let permissionChecked   = false;
+let permissionGranted   = false;
 let channelsInitialized = false;
+
+// ---------------------------------------------------------------------------
+// Helper: 32-bit integer Notification ID generator
+// ---------------------------------------------------------------------------
+/**
+ * Generates a consistent, positive 32-bit integer ID for LocalNotifications.
+ * Android requires notification IDs to be 32-bit signed integers (> 0).
+ */
+export function toNotificationId(id: string | number): number {
+  if (typeof id === 'number') {
+    const abs = Math.abs(id);
+    return abs > 0 ? (abs % 2147483640) + 1 : 1;
+  }
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    const char = id.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash |= 0; // Convert to 32bit integer
+  }
+  return (Math.abs(hash) % 2147483640) + 1;
+}
+
+export function getTaskStartNotificationId(taskId: string): number {
+  return toNotificationId(`start_${taskId}`);
+}
+
+export function getTaskEndNotificationId(taskId: string): number {
+  return toNotificationId(`end_${taskId}`);
+}
+
+export function getAppUpdateNotificationId(tag: string): number {
+  return toNotificationId(`update_${tag}`);
+}
 
 // ---------------------------------------------------------------------------
 // 1. NOTIFICATION CHANNEL CREATION
@@ -62,7 +101,7 @@ export async function createNotificationChannels(): Promise<void> {
   if (channelsInitialized) return;
 
   try {
-    // Channel 1: Task Reminders — IMPORTANCE_MAX (5), vibration enabled
+    // Channel 1: Task Reminders — IMPORTANCE_MAX (5) / HIGH (4), vibration enabled
     await LocalNotifications.createChannel({
       id:          CHANNEL_TASK_REMINDERS,
       name:        'Task Reminders',
@@ -105,6 +144,29 @@ export async function checkNotificationPermission(): Promise<PermissionStatus> {
 }
 
 /**
+ * Ensures notification permissions are checked and requested if not yet granted.
+ */
+export async function ensureNotificationPermissions(): Promise<boolean> {
+  try {
+    const status: PermissionStatus = await LocalNotifications.checkPermissions();
+    if (status.display === 'granted') {
+      permissionGranted = true;
+      permissionChecked = true;
+      return true;
+    }
+
+    const result: PermissionStatus = await LocalNotifications.requestPermissions();
+    permissionGranted = result.display === 'granted';
+    permissionChecked = true;
+    return permissionGranted;
+  } catch (e) {
+    console.error('[NotificationService] ✗ Permission request error:', e);
+    permissionChecked = true;
+    return false;
+  }
+}
+
+/**
  * Proactively requests notification permission AND creates channels.
  * Idempotent — safe to call on every app launch.
  */
@@ -114,30 +176,8 @@ export async function initializeNotifications(): Promise<boolean> {
   // Step 1: Create notification channels FIRST
   await createNotificationChannels();
 
-  // Step 2: Check current permission
-  try {
-    const status: PermissionStatus = await LocalNotifications.checkPermissions();
-    console.log('[NotificationService] Permission status:', status.display);
-
-    if (status.display === 'granted') {
-      permissionGranted  = true;
-      permissionChecked  = true;
-      console.log('[NotificationService] ✓ Notifications already granted');
-      return true;
-    }
-
-    // Step 3: Request permission
-    const result: PermissionStatus = await LocalNotifications.requestPermissions();
-    permissionGranted = result.display === 'granted';
-    permissionChecked = true;
-    console.log('[NotificationService] Permission result:', result.display);
-
-    return permissionGranted;
-  } catch (e) {
-    console.error('[NotificationService] ✗ Failed to initialize:', e);
-    permissionChecked = true;
-    return false;
-  }
+  // Step 2: Check & request permission
+  return await ensureNotificationPermissions();
 }
 
 /** Returns true if notifications are currently granted. */
@@ -152,17 +192,18 @@ export function isPermissionGranted(): boolean {
  * Generic notification scheduling helper used by start/end/update helpers.
  * Uses `allowWhileIdle: true` so Android Doze mode does NOT defer the alarm.
  */
-async function scheduleNotification(options: NotificationOptions): Promise<boolean> {
+export async function scheduleNotification(options: NotificationOptions): Promise<boolean> {
   try {
-    const numId = typeof options.id === 'string'
-      ? parseInt(options.id.replace(/\D/g, ''), 10) || Date.now()
-      : options.id;
+    await createNotificationChannels();
+    await ensureNotificationPermissions();
+
+    const numId = toNotificationId(options.id);
 
     await LocalNotifications.schedule({
       notifications: [{
-        id:       numId,
-        title:    options.title,
-        body:     options.body,
+        id:        numId,
+        title:     options.title,
+        body:      options.body,
         channelId: options.channelId,
         schedule: {
           at:             new Date(options.scheduleAt),
@@ -173,13 +214,13 @@ async function scheduleNotification(options: NotificationOptions): Promise<boole
     });
 
     console.log(
-      `[NotificationService] ✓ Scheduled "${options.title}" for`,
+      `[NotificationService] ✓ Scheduled [${numId}] "${options.title}" for`,
       new Date(options.scheduleAt).toLocaleString(),
       '| channel:', options.channelId,
     );
     return true;
   } catch (e) {
-    console.error('[NotificationService] ✗ Failed to schedule:', options.title, e);
+    console.error('[NotificationService] ✗ Failed to schedule notification:', options.title, e);
     return false;
   }
 }
@@ -189,20 +230,23 @@ async function scheduleNotification(options: NotificationOptions): Promise<boole
 // ---------------------------------------------------------------------------
 /**
  * TASK START ALARM — fires at exact task.startTime.
- * Per spec: Title "Task Starting: {taskTitle}"
- *            Body  "Your scheduled task '[taskTitle]' is starting now!"
+ * Per spec: Title "Task Starting: [Task Title]"
+ *            Body  "Your scheduled task '[Task Title]' is starting now!"
  */
 export async function scheduleTaskStartReminder(
-  taskId:    string,
-  taskTitle: string,
-  startTime: Date,
-  _subjectName?: string, // unused in new spec
+  taskId:       string,
+  taskTitle:    string,
+  startTime:    Date | string,
+  _subjectName?: string,
 ): Promise<boolean> {
+  const targetDate = new Date(startTime);
+  const startId = getTaskStartNotificationId(taskId);
+
   return scheduleNotification({
-    id:       `start_${taskId}`,
-    title:    `Task Starting: ${taskTitle}`,
-    body:     `Your scheduled task '${taskTitle}' is starting now!`,
-    scheduleAt: startTime,
+    id:         startId,
+    title:      `Task Starting: ${taskTitle}`,
+    body:       `Your scheduled task '${taskTitle}' is starting now!`,
+    scheduleAt: targetDate,
     channelId:  CHANNEL_TASK_REMINDERS,
     extraData:  { taskId, taskTitle, actionType: 'start' },
   });
@@ -211,19 +255,22 @@ export async function scheduleTaskStartReminder(
 /**
  * TASK END COMPLETION ALARM — fires at exact task.endTime.
  * Per spec: Title "Task Completed?"
- *            Body  "Did you finish '[taskTitle]'? Tap to mark completed or reschedule."
+ *            Body  "Did you finish '[Task Title]'? Tap to mark as completed or reschedule."
  * Tapping this notification opens the app with [Mark Completed] / [Reschedule] options.
  */
 export async function scheduleTaskEndReminder(
   taskId:    string,
   taskTitle: string,
-  endTime:   Date,
+  endTime:   Date | string,
 ): Promise<boolean> {
+  const targetDate = new Date(endTime);
+  const endId = getTaskEndNotificationId(taskId);
+
   return scheduleNotification({
-    id:        `end_${taskId}`,
-    title:     'Task Completed?',
-    body:      `Did you finish '${taskTitle}'? Tap to mark completed or reschedule.`,
-    scheduleAt: new Date(endTime),
+    id:         endId,
+    title:      'Task Completed?',
+    body:       `Did you finish '${taskTitle}'? Tap to mark as completed or reschedule.`,
+    scheduleAt: targetDate,
     channelId:  CHANNEL_TASK_REMINDERS,
     extraData:  {
       taskId,
@@ -234,55 +281,88 @@ export async function scheduleTaskEndReminder(
 }
 
 // ---------------------------------------------------------------------------
-// 5. APP UPDATE NOTIFICATION
+// 5. APP UPDATE NOTIFICATION ENGINE
 // ---------------------------------------------------------------------------
 /**
  * Fires an immediate local notification on the app-updates channel
  * when a newer GitHub release is detected.
+ *
+ * Persists `lastNotifiedVersion = newTag` in `@capacitor/preferences` so the
+ * notification only fires ONCE per update.
  */
 export async function showAppUpdateNotification(
-  latestVersion: string,
-  downloadUrl?:  string,
+  newTag:       string,
+  downloadUrl?: string,
 ): Promise<boolean> {
-  return scheduleNotification({
-    id:        `update_${Date.now()}`,
-    title:     'New GATE Prep Update Available!',
-    body:      `Version ${latestVersion} is available. Tap to download and install.`,
-    scheduleAt: new Date(), // Fire immediately
-    channelId:  CHANNEL_APP_UPDATES,
-    extraData:  { kind: 'update', latestVersion, downloadUrl },
-  });
+  try {
+    // Check if we already notified the user for this specific release version
+    const stored = await Preferences.get({ key: PREF_LAST_NOTIFIED_VERSION });
+    if (stored.value === newTag) {
+      console.log(`[NotificationService] Already notified user for release version: ${newTag}`);
+      return false;
+    }
+
+    const updateId = getAppUpdateNotificationId(newTag);
+
+    const success = await scheduleNotification({
+      id:         updateId,
+      title:      'New Version Available! 🚀',
+      body:       `Version ${newTag} is now available. Tap here to download the latest APK update.`,
+      scheduleAt: new Date(), // Immediate
+      channelId:  CHANNEL_APP_UPDATES,
+      extraData:  { kind: 'update', latestVersion: newTag, downloadUrl },
+    });
+
+    if (success) {
+      await Preferences.set({ key: PREF_LAST_NOTIFIED_VERSION, value: newTag });
+      console.log(`[NotificationService] ✓ App update notification sent & recorded for ${newTag}`);
+    }
+
+    return success;
+  } catch (e) {
+    console.error('[NotificationService] ✗ Failed to show app update notification:', e);
+    return false;
+  }
 }
 
 // ---------------------------------------------------------------------------
 // 6. CANCELLATION
 // ---------------------------------------------------------------------------
 export async function cancelNotification(id: string | number): Promise<void> {
-  const numId = typeof id === 'string'
-    ? parseInt(id.replace(/\D/g, ''), 10) || 0
-    : id;
+  const numId = toNotificationId(id);
   try {
     await LocalNotifications.cancel({ notifications: [{ id: numId }] });
-    console.log('[NotificationService] ✓ Cancelled notification:', numId);
-  } catch {
-    // ignore
+    console.log('[NotificationService] ✓ Cancelled notification ID:', numId);
+  } catch (e) {
+    console.warn('[NotificationService] Failed to cancel notification:', e);
   }
 }
 
 export async function cancelTaskNotifications(taskId: string): Promise<void> {
-  await Promise.all([
-    cancelNotification(`start_${taskId}`),
-    cancelNotification(`end_${taskId}`),
-    cancelNotification(taskId),
-  ]);
+  const startId = getTaskStartNotificationId(taskId);
+  const endId   = getTaskEndNotificationId(taskId);
+  const rawId   = toNotificationId(taskId);
+
+  try {
+    await LocalNotifications.cancel({
+      notifications: [
+        { id: startId },
+        { id: endId },
+        { id: rawId },
+      ],
+    });
+    console.log(`[NotificationService] ✓ Cancelled task notifications [${startId}, ${endId}] for task ${taskId}`);
+  } catch (e) {
+    console.warn('[NotificationService] Failed to cancel task notifications:', e);
+  }
 }
 
 export async function cancelAllNotifications(): Promise<void> {
   try {
     await LocalNotifications.cancelAll();
     console.log('[NotificationService] ✓ Cancelled all notifications');
-  } catch {
-    // ignore
+  } catch (e) {
+    console.warn('[NotificationService] Failed to cancel all notifications:', e);
   }
 }
 
@@ -296,9 +376,10 @@ export async function showImmediateNotification(
 ): Promise<boolean> {
   try {
     const id = Date.now();
+    await createNotificationChannels();
     await LocalNotifications.schedule({
       notifications: [{
-        id,
+        id:        toNotificationId(id),
         title,
         body,
         channelId: CHANNEL_TASK_REMINDERS,
@@ -317,14 +398,15 @@ export async function showImmediateNotification(
 }
 
 // ---------------------------------------------------------------------------
-// 8. NOTIFICATION TAP LISTENER
+// 8. NOTIFICATION TAP & ACTION LISTENER
 // ---------------------------------------------------------------------------
 /**
  * Registers a listener for when the user taps a notification or an action button.
  * Returns an unsubscribe function. Call once on app init.
  *
- * On tap → dispatches `gate-prep:task-notification-tap` custom DOM event so
- * the DailyActivityPage can show the [Complete] / [Reschedule] modal.
+ * When tapped:
+ * - Start / End task notifications deep-link to the active task.
+ * - App update notifications open the APK download URL or release page.
  */
 export async function registerNotificationActionListener(
   onTaskAction: (payload: NotificationTapPayload) => void,
@@ -334,9 +416,12 @@ export async function registerNotificationActionListener(
     const handle = await LocalNotifications.addListener(
       'localNotificationActionPerformed',
       (event) => {
-        const extra      = (event.notification && event.notification.extra) || {};
-        const taskId     = String(extra.taskId || '');
-        const taskTitle  = String(extra.taskTitle || '');
+        const extra       = (event.notification && event.notification.extra) || {};
+        const taskId      = String(extra.taskId || '');
+        const taskTitle   = String(extra.taskTitle || '');
+        const downloadUrl = extra.downloadUrl ? String(extra.downloadUrl) : undefined;
+        const latestVersion = extra.latestVersion ? String(extra.latestVersion) : undefined;
+
         const kind: NotificationTapKind =
           extra.actionType === 'start' ? 'start'
           : extra.actionType === 'end' ? 'end'
@@ -353,6 +438,15 @@ export async function registerNotificationActionListener(
           }
         }
 
+        // If app update notification tapped and URL is available, open it
+        if (kind === 'update' && downloadUrl) {
+          try {
+            window.open(downloadUrl, '_system');
+          } catch {
+            // ignore
+          }
+        }
+
         console.log(
           '[NotificationService] Notification tapped — kind:',
           kind,
@@ -362,7 +456,7 @@ export async function registerNotificationActionListener(
           taskId,
         );
 
-        onTaskAction({ taskId, taskTitle, kind, action });
+        onTaskAction({ taskId, taskTitle, kind, action, downloadUrl, latestVersion });
       },
     );
     sub = handle as unknown as { remove: () => void };

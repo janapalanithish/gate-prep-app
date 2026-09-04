@@ -27,7 +27,7 @@ import {
   initializeNotifications,
   scheduleTaskStartReminder,
   scheduleTaskEndReminder,
-  cancelNotification,
+  cancelTaskNotifications,
   showImmediateNotification,
 } from '../lib/notificationService';
 
@@ -223,10 +223,9 @@ export default function TasksPage() {
     };
     actions.addOrUpdateDailyLog(updatedLog);
 
-    // If task marked complete, cancel any pending end-time notifications
+    // If task marked complete, cancel any pending start/end notifications
     if (task && task.completed === false) {
-      await cancelNotification(`start_${taskId}`);
-      await cancelNotification(`end_${taskId}`);
+      await cancelTaskNotifications(taskId);
     }
   };
 
@@ -236,8 +235,7 @@ export default function TasksPage() {
     const { taskId, title } = snoozeModal;
 
     // Cancel existing notifications
-    await cancelNotification(`start_${taskId}`);
-    await cancelNotification(`end_${taskId}`);
+    await cancelTaskNotifications(taskId);
 
     // Remove from current day's tasks
     const updatedTasks = (currentLog.tasks || []).filter((t) => t.id !== taskId);
@@ -287,8 +285,7 @@ export default function TasksPage() {
 
   // ---- Delete Task ----
   const handleDeleteTask = async (taskId: string, taskTitle: string) => {
-    await cancelNotification(`start_${taskId}`);
-    await cancelNotification(`end_${taskId}`);
+    await cancelTaskNotifications(taskId);
     const updatedTasks = (currentLog.tasks || []).filter((t) => t.id !== taskId);
     const updatedLog: DailyLog = {
       ...currentLog,
