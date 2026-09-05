@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "298571694665",
+    "project_id": "gate-prep-app-e219f",
+    "storage_bucket": "gate-prep-app-e219f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:298571694665:android:38d71ec5c4699d4de0b598",
+        "android_client_info": {
+          "package_name": "com.gateprep.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCPbceXpBPL2-ZdbzqRMHC0mj_3l6gB360"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

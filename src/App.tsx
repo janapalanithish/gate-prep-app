@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { FirebaseAnalytics } from '@capacitor-community/firebase-analytics';
 import { AppData } from './lib/types';
 import { loadAppData, createDefaultAppData } from './lib/storage';
 import { useStore, useActions } from './lib/store';
@@ -54,6 +55,12 @@ export default function App() {
         setShowBranchSetup(true);
       }
       setLoaded(true);
+      // Log app open event to Firebase Analytics
+      try {
+        await FirebaseAnalytics.logEvent({ name: 'app_open', params: {} });
+      } catch (e) {
+        console.warn('[App] FirebaseAnalytics.logEvent error:', e);
+      }
     };
     init();
   }, []);
