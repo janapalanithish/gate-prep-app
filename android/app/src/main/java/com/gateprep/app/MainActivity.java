@@ -20,6 +20,9 @@ import android.app.NotificationManager;
 import android.app.AlarmManager;
 import android.app.PendingIntent;
 import android.content.Intent;
+import android.media.AudioAttributes;
+import android.media.RingtoneManager;
+import android.net.Uri;
 
 public class MainActivity extends BridgeActivity {
 
@@ -43,7 +46,7 @@ public class MainActivity extends BridgeActivity {
     }
 
     /**
-     * Creates Channel 1: task-reminders (MAX importance, vibration enabled).
+     * Creates Channel 1: task-reminders (HIGH importance, USAGE_ALARM audio attributes, bypass DND, vibration enabled).
      * This is the primary channel for task start/end alarms.
      */
     private void createTaskRemindersChannel() {
@@ -54,14 +57,25 @@ public class MainActivity extends BridgeActivity {
                 NotificationManager.IMPORTANCE_HIGH
             );
             channel.setDescription("Task start & end time reminders for your study sessions");
+
+            AudioAttributes audioAttributes = new AudioAttributes.Builder()
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .setUsage(AudioAttributes.USAGE_ALARM)
+                .build();
+
+            Uri soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
+            channel.setSound(soundUri, audioAttributes);
             channel.enableVibration(true);
+            channel.setVibrationPattern(new long[]{0, 500, 200, 500});
             channel.enableLights(true);
             channel.setShowBadge(true);
+            channel.setBypassDnd(true);
             channel.setLockscreenVisibility(NotificationCompat.VISIBILITY_PUBLIC);
+
             NotificationManager notificationManager = getSystemService(NotificationManager.class);
             if (notificationManager != null) {
                 notificationManager.createNotificationChannel(channel);
-                Log.d("[NotificationService]", "✓ Task Reminders channel created (task-reminders, IMPORTANCE_HIGH)");
+                Log.d("[NotificationService]", "✓ Task Reminders channel created (task-reminders, IMPORTANCE_HIGH, USAGE_ALARM, bypassDnd)");
             }
         }
     }
@@ -78,10 +92,19 @@ public class MainActivity extends BridgeActivity {
                 NotificationManager.IMPORTANCE_HIGH
             );
             channel.setDescription("Alerts when a new version of GATE Prep is available");
+
+            AudioAttributes audioAttributes = new AudioAttributes.Builder()
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION_EVENT)
+                .build();
+
+            Uri soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
+            channel.setSound(soundUri, audioAttributes);
             channel.enableVibration(true);
             channel.enableLights(true);
             channel.setShowBadge(true);
             channel.setLockscreenVisibility(NotificationCompat.VISIBILITY_PUBLIC);
+
             NotificationManager notificationManager = getSystemService(NotificationManager.class);
             if (notificationManager != null) {
                 notificationManager.createNotificationChannel(channel);
@@ -107,15 +130,27 @@ public class MainActivity extends BridgeActivity {
 
     /**
      * Requests SCHEDULE_EXACT_ALARM permission on Android 12+ (API 31).
-     * This allows notifications to fire at the precise user-selected time.
+     * This allows notifications to fire at the precise user-selected time without Doze delay.
      */
     private void requestExactAlarmPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             AlarmManager alarmManager = (AlarmManager) getSystemService(ALARM_SERVICE);
             if (alarmManager != null && !alarmManager.canScheduleExactAlarms()) {
-                Intent intent = new Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM);
-                intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                startActivity(intent);
+                try {
+                    Intent intent = new Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM);
+                    intent.setData(Uri.parse("package:" + getPackageName()));
+                    intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(intent);
+                } catch (Exception e) {
+                    try {
+                        Intent fallbackIntent = new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                        fallbackIntent.setData(Uri.parse("package:" + getPackageName()));
+                        fallbackIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        startActivity(fallbackIntent);
+                    } catch (Exception ex) {
+                        Log.e("[NotificationService]", "Failed to request exact alarm permission", ex);
+                    }
+                }
             }
         }
     }
@@ -125,7 +160,7 @@ public class MainActivity extends BridgeActivity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == NOTIFICATION_PERMISSION_REQUEST_CODE) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                // Notifications are now enabled
+                Log.d("[NotificationService]", "POST_NOTIFICATIONS granted");
             }
         }
     }
@@ -136,9 +171,21 @@ public class MainActivity extends BridgeActivity {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             AlarmManager alarmManager = (AlarmManager) getSystemService(ALARM_SERVICE);
             if (alarmManager != null && !alarmManager.canScheduleExactAlarms()) {
-                Intent intent = new Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM);
-                intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                startActivity(intent);
+                try {
+                    Intent intent = new Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM);
+                    intent.setData(Uri.parse("package:" + getPackageName()));
+                    intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(intent);
+                } catch (Exception e) {
+                    try {
+                        Intent fallbackIntent = new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                        fallbackIntent.setData(Uri.parse("package:" + getPackageName()));
+                        fallbackIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        startActivity(fallbackIntent);
+                    } catch (Exception ex) {
+                        Log.e("[NotificationService]", "Failed to open exact alarm settings", ex);
+                    }
+                }
                 call.resolve();
                 return;
             }

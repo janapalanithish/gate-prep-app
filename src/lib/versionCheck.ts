@@ -43,7 +43,7 @@ export function compareVersions(v1: string, v2: string): number {
  * Get the current app version from package.json (source of truth).
  * Falls back to the constant below if the dynamic import fails.
  */
-export const CURRENT_APP_VERSION = '1.0.21';
+export const CURRENT_APP_VERSION = '1.0.25';
 const GITHUB_API_URL = 'https://api.github.com/repos/janapalanithish/gate-prep-app/releases/latest';
 
 /**

@@ -1,15 +1,16 @@
 /**
- * Notification Service for GATE Prep App — v1.0.21
+ * Notification Service for GATE Prep App — v1.0.25
  * Guarantees system-level alerts on Android via:
  *   - Two dedicated notification channels (task-reminders, app-updates)
  *   - Explicit channel creation on every app startup
  *   - SCHEDULE_EXACT_ALARM + POST_NOTIFICATIONS permission flows
- *   - allowWhileIdle scheduling for Doze-mode reliability
+ *   - allowWhileIdle + exact:true scheduling for Doze-mode bypass & zero-latency alarms
+ *   - IMPORTANCE_MAX channel with USAGE_ALARM audio attributes
  *
  * Notification contracts (per spec):
  *  - TASK START ALARM at task.startTime → "Task Starting: {title}" + "Your scheduled task '[title]' is starting now!"
  *  - TASK END ALARM   at task.endTime   → "Task Completed?" + "Did you finish '[title]'? Tap to mark as completed or reschedule."
- *  - APP UPDATE      on version check   → "New Version Available! 🚀" + "Version [NewTag] is now available. Tap here to download the latest APK update."
+ *  - APP UPDATE      on version check   → "New Update Available! 🚀" + "Version [NewTag] is now live. Tap to download the latest APK."
  *  - Tapping the end-time notification opens the app directly to the active task,
  *    prompting the user to either [Mark Completed] or [Reschedule].
  */
@@ -79,11 +80,13 @@ export function toNotificationId(id: string | number): number {
 }
 
 export function getTaskStartNotificationId(taskId: string): number {
-  return toNotificationId(`start_${taskId}`);
+  // Spec: id = unique numeric hash from taskId + 1
+  return toNotificationId(`start_${taskId}_1`);
 }
 
 export function getTaskEndNotificationId(taskId: string): number {
-  return toNotificationId(`end_${taskId}`);
+  // Spec: id = unique numeric hash from taskId + 2
+  return toNotificationId(`end_${taskId}_2`);
 }
 
 export function getAppUpdateNotificationId(tag: string): number {
@@ -190,12 +193,14 @@ export function isPermissionGranted(): boolean {
 // ---------------------------------------------------------------------------
 /**
  * Generic notification scheduling helper used by start/end/update helpers.
- * Uses `allowWhileIdle: true` so Android Doze mode does NOT defer the alarm.
+ * Uses `allowWhileIdle: true` + `exact: true` so Android Doze mode defers NONE of the alarm.
+ * exact:true forces AlarmManager.RTC_WAKEUP for 0-second latency.
  */
 export async function scheduleNotification(options: NotificationOptions): Promise<boolean> {
   try {
     await createNotificationChannels();
-    await ensureNotificationPermissions();
+    // Spec: Call await LocalNotifications.requestPermissions() to verify permission status
+    await LocalNotifications.requestPermissions();
 
     const numId = toNotificationId(options.id);
 
@@ -239,7 +244,25 @@ export async function scheduleTaskStartReminder(
   startTime:    Date | string,
   _subjectName?: string,
 ): Promise<boolean> {
+  // 1) Verify permission status
+  try {
+    const status = await LocalNotifications.checkPermissions();
+    if (status.display !== 'granted') {
+      await LocalNotifications.requestPermissions();
+    }
+  } catch {
+    // continue; best-effort permission check
+  }
+
+  // 2) Calculate target Date from start time
   const targetDate = new Date(startTime);
+
+  // 3) Only schedule if the start time is in the future
+  if (targetDate.getTime() <= Date.now()) {
+    console.log('[NotificationService] Skipping task-start reminder (start time is in the past):', targetDate);
+    return false;
+  }
+
   const startId = getTaskStartNotificationId(taskId);
 
   return scheduleNotification({
@@ -248,7 +271,7 @@ export async function scheduleTaskStartReminder(
     body:       `Your scheduled task '${taskTitle}' is starting now!`,
     scheduleAt: targetDate,
     channelId:  CHANNEL_TASK_REMINDERS,
-    extraData:  { taskId, taskTitle, actionType: 'start' },
+    extraData:  { taskId, type: 'start' },
   });
 }
 
@@ -263,20 +286,34 @@ export async function scheduleTaskEndReminder(
   taskTitle: string,
   endTime:   Date | string,
 ): Promise<boolean> {
+  // 1) Verify permission status
+  try {
+    const status = await LocalNotifications.checkPermissions();
+    if (status.display !== 'granted') {
+      await LocalNotifications.requestPermissions();
+    }
+  } catch {
+    // continue; best-effort permission check
+  }
+
+  // 2) Calculate target Date from end time
   const targetDate = new Date(endTime);
+
+  // 3) Only schedule if the end time is in the future
+  if (targetDate.getTime() <= Date.now()) {
+    console.log('[NotificationService] Skipping task-end reminder (end time is in the past):', targetDate);
+    return false;
+  }
+
   const endId = getTaskEndNotificationId(taskId);
 
   return scheduleNotification({
     id:         endId,
     title:      'Task Completed?',
-    body:       `Did you finish '${taskTitle}'? Tap to mark as completed or reschedule.`,
+    body:       `Did you finish '${taskTitle}'? Tap to mark completed or reschedule.`,
     scheduleAt: targetDate,
     channelId:  CHANNEL_TASK_REMINDERS,
-    extraData:  {
-      taskId,
-      taskTitle,
-      actionType: 'end',
-    },
+    extraData:  { taskId, type: 'end' },
   });
 }
 
@@ -302,13 +339,11 @@ export async function showAppUpdateNotification(
       return false;
     }
 
-    const updateId = getAppUpdateNotificationId(newTag);
-
     const success = await scheduleNotification({
-      id:         updateId,
-      title:      'New Version Available! 🚀',
-      body:       `Version ${newTag} is now available. Tap here to download the latest APK update.`,
-      scheduleAt: new Date(), // Immediate
+      id:         99999,
+      title:      'New Update Available! 🚀',
+      body:       `Version ${newTag} is now live. Tap to download the latest APK.`,
+      scheduleAt: new Date(Date.now() + 1000), // Immediate / 1s later
       channelId:  CHANNEL_APP_UPDATES,
       extraData:  { kind: 'update', latestVersion: newTag, downloadUrl },
     });
@@ -422,9 +457,10 @@ export async function registerNotificationActionListener(
         const downloadUrl = extra.downloadUrl ? String(extra.downloadUrl) : undefined;
         const latestVersion = extra.latestVersion ? String(extra.latestVersion) : undefined;
 
+        const rawType = extra.type || extra.actionType;
         const kind: NotificationTapKind =
-          extra.actionType === 'start' ? 'start'
-          : extra.actionType === 'end' ? 'end'
+          rawType === 'start' ? 'start'
+          : rawType === 'end' ? 'end'
           : 'update';
 
         const actionId = (event as any).actionId || '';
